@@ -1,0 +1,38 @@
+---
+title: "bayesian exercises"
+output: html_document
+date: "2025-10-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+x <- seq(-5, 10, by = .1)
+
+y <- 0.5*dnorm(x, mean = 1, sd = 2) + 0.5*dnorm(x,2,2)
+
+
+plot(x,y)
+```
+
+```{r}
+dat <- read.table(text = "info mean sd
+info1 1 2
+info2 2 2
+info3 1.5 2
+", header = TRUE)
+
+densities <- apply(dat[, -1], 1, function(x) rnorm(n = 2000, mean = x[1], sd = x[2]))
+colnames(densities) <- dat$info
+
+plot(0, type = "n", xlim = c(min(densities), max(densities)), ylim = c(0, .2))
+for (d in 1:ncol(densities)){
+  lines(density(densities[, d]), lty = d)
+}
+legend("topright", legend=colnames(densities), lty=1:ncol(densities))
+```
+
