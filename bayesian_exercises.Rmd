@@ -36,3 +36,32 @@ for (d in 1:ncol(densities)){
 legend("topright", legend=colnames(densities), lty=1:ncol(densities))
 ```
 
+```{r}
+sc<- c(-7,-5,-3,-3,1,6,7,13,15,16,20,21)
+ps<-c(8,8,8,8,8,8,8,8,8,8,8,8)
+diff<- sc-ps
+diff
+mean(diff)
+sd(diff)
+var(diff)
+```
+
+```{r}
+p1<-1-pnorm(-8, mean(diff),sd(diff))
+p2<-1-pnorm(0, mean(diff),sd(diff))
+p3<-p2/p1
+p1
+p2
+p3
+```
+
+
+
+```{r}
+mydata <- data.frame(x = diff)
+ggplot(mydata, aes(x)) +
+  geom_histogram(aes(y = ..density..), binwidth = 0.5,
+                 fill = "cornsilk", color = "black") +
+  stat_function(fun = dnorm, args = list(mean = mean(diff), sd = sd(diff)), color = "maroon")
+```
+
