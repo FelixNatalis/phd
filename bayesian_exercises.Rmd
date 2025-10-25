@@ -35,4 +35,397 @@ for (d in 1:ncol(densities)){
 }
 legend("topright", legend=colnames(densities), lty=1:ncol(densities))
 ```
+```{r}
+x <- 1
+
+y1 <- dnorm(x, mean = 1, sd = 2)
+y2 <- dnorm(x,2,2)
+
+n <- y1/(y1+y2)
+n
+```
+
+```{r}
+library(dplyr)
+library(GLMsData)
+# Load data
+data(ants)
+
+# Set column names to lower case
+ants_df <- ants %>%
+  rename(sp_rich = Srich) %>%
+  rename_with(tolower)
+
+# What does the data look like?
+glimpse(ants_df)
+```
+```{r}
+library(brms)
+summary(ants_df)
+ants_df %>%
+  ggplot(aes(x = sp_rich)) +
+    geom_bar() +
+    scale_x_continuous(limits = c(0, NA)) +
+    facet_wrap(~habitat)
+```
+
+```{r}
+ants_df %>%
+  ggplot(aes(y = sp_rich, x = habitat)) +
+    geom_boxplot() +
+    geom_line(aes(colour = site, group = site), alpha = 0.5) +
+    geom_point(aes(colour = site, group = site)) +
+    scale_y_continuous(limits = c(0, NA))
+```
+
+```{r}
+# Scatter plot of the number of species, related to the latitude per habitat
+ants_df %>%
+  ggplot(aes(y = sp_rich, x = latitude)) +
+    geom_point() +
+    geom_smooth(method = "loess", formula = "y ~ x", colour = "firebrick",
+                level = 0.9) +
+    facet_wrap(~habitat)
+
+ants_df %>%
+  ggplot(aes(y = sp_rich, x = elevation)) +
+    geom_point() +
+    geom_smooth(method = "loess", formula = "y ~ x", colour = "firebrick",
+                level = 0.9) +
+    facet_wrap(~habitat)
+```
+
+```{r}
+library(rstan)
+example(stan_model, run.dontrun = TRUE)
+
+```
+
+
+```{r}
+library(brms)
+nchains <- 3 # number of chains
+niter <- 2000 # number of iterations (incl. warmup, see next)
+warmup <- niter / 4 # number of initial samples to remove (= warmup)
+nparallel <- nchains # number of cores for parallel computing
+thinning <- 1 # thinning factor (here 1 = no thinning)
+
+
+# Fit Normal model
+fit_normal1 <- brm(
+  formula = sp_rich ~ habitat, # specify the model
+  family = gaussian(),         # we use the Normal distribution
+  data = ants_df,              # specify data
+  chains = nchains,            # MCMC parameters
+  warmup = warmup, 
+  iter = niter,
+  cores = nparallel,
+  thin = thinning,
+  seed = 123)                  # seed for reproducibility
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+install.packages("bayesplot")
+library(bayesplot)
+fit_normal1
+color_scheme_set("mix-blue-red")
+parameters <- c("b_Intercept", "b_habitatForest", "sigma")
+# Visualisation by extracting samples with as_draws_df()
+as_draws_df(fit_normal1, variable = parameters) %>%
+  # long format
+  pivot_longer(cols = all_of(parameters), names_to = "parameter",
+               values_to = "value") %>%
+  # visualise with ggplot()
+  ggplot(aes(y = value, x = .iteration, colour = factor(.chain))) +
+    geom_line() +
+    facet_wrap(~parameter, nrow = 3, scales = "free")
+```
+
+```{r}
+mcmc_trace(fit_normal1, pars = parameters)
+```
+
+```{r}
+library(tidyr)
+cumquant <- function(x, p) {
+  out <- sapply(seq_along(x),
+                function(k, z) quantile(z[1:k], probs = p[1], names = FALSE),
+                z = x)
+  return(out)
+}
+
+as_draws_df(fit_normal1, variable = parameters) %>%
+  mutate(across(all_of(parameters), ~cummean(.x),
+                .names = "{.col}_mean"),
+         across(all_of(parameters), ~cumquant(.x, 0.05),
+                .names = "{.col}_q05"),
+         across(all_of(parameters), ~cumquant(.x, 0.95),
+                .names = "{.col}_q95")) %>%
+  select(-all_of(parameters)) %>%
+  # long format for visualisation
+  pivot_longer(cols = starts_with(parameters), names_to = "name",
+               values_to = "value") %>%
+  # split columns names at the last underscore
+  tidyr::extract(name, into = c("parameter", "statistic"), "(.*)_([^_]+)$") %>%
+  ggplot(aes(y = value, x = .iteration, colour = factor(.chain))) +
+    geom_line(aes(linetype = statistic), linewidth = 0.8) +
+    facet_wrap(~parameter, nrow = 3, scales = "free")
+```
+```{r}
+mcmc_dens_overlay(fit_normal1, pars = parameters)
+```
+
+```{r}
+pp_check(fit_normal1, type = "dens_overlay_grouped", ndraws = 100, 
+         group = "habitat")
+```
+
+```{r}
+fit_poisson1 <- brm(
+  formula = sp_rich ~ habitat, # specify the model
+  family = poisson(),          # we use the Poisson distribution
+  data = ants_df,              # specify the data
+  chains = nchains,            # MCMC parameters
+  warmup = warmup, 
+  iter = niter,
+  cores = nparallel,
+  thin = thinning,
+  seed = 123)                  # seed for reproducibility
+```
+
+```{r}
+plot(fit_poisson1)
+```
+```{r}
+parameters <- c("b_Intercept", "b_habitatForest")
+mcmc_dens_overlay(fit_poisson1, pars = parameters)
+```
+
+```{r}
+library("rstan")
+conflicted::conflicts_prefer(rstan::extract)
+conflicted::conflicts_prefer(brms::loo)
+
+stan_poisson_model_code = '
+data {
+  int<lower=1> N;                   // sample size
+  vector[N] habitat_obs;            // habitat
+  array[N] int<lower=0> sp_rich;    // outcome variable: number of ants
+}
+
+parameters {
+  real intercept_rich;              // intercept
+  real habitat_effect;              // slope
+}
+
+model {
+  // priors
+  intercept_rich ~ normal(0, 1);
+  habitat_effect ~ normal(0, 1);
+
+  // "posterior", "likelihood", ... give it a name!
+  sp_rich ~ poisson_log(intercept_rich + habitat_effect * habitat_obs);
+
+}
+
+'
+
+stan_poisson_model <- stan_model(
+  # file = here("code", "brms_modeling", "poisson_model.stan"),
+  model_code = stan_poisson_model_code, 
+  model_name = "stan poisson model"
+  )
+```
+
+
+```{r}
+stan_poisson_fit <- sampling(
+  stan_poisson_model,
+  list(
+    N = nrow(ants_df),
+    habitat_obs = as.integer(ants_df$habitat)-1,
+    sp_rich = ants_df$sp_rich
+    ),
+  iter = niter,
+  chains = nchains,
+  cores = nparallel
+  )
+
+stan_poisson_fit
+
+
+library("shinystan")
+launch_shinystan(stan_poisson_fit)
+```
+
+
+
+
+
+```{r}
+library(tidyverse)
+library(brms)
+library(tidybayes)
+library(lme4)
+library(lattice)
+
+# get data
+data(sleepstudy, package = "lme4")
+
+# fit example model
+prior1 <- prior(normal(0, 3), class = b)
+
+fit_mcmc <- brm(Reaction ~ Days + (1 | Subject),
+                data = sleepstudy, prior = prior1,
+                cores = 2,
+                sample_prior = "yes")
+
+fit_reml <- lmer(Reaction ~ Days + (1 | Subject),
+                 data = sleepstudy)
+
+# extract prior and posterior samples for Days
+prior_draws <- tibble(b_Days = prior_draws(fit_mcmc, variable = "b")$b)
+post_draws <- as_tibble(as_draws_df(fit_mcmc))
+
+draws <- bind_rows(prior = prior_draws, posterior = post_draws, .id = "dist")
+
+# extract parameter density
+prof <- densityplot(profile(fit_reml, "Days"), bw = "SJ", kernel = "gaussian")
+lik <- tibble(b_Days = seq(prof$x.limits[[1]][1], prof$x.limits[[1]][2], length.out = 201),
+              density = prof$call$data$density,
+              dist = "likelihood")
+
+# plot
+ggplot(draws, aes(x = b_Days, fill = dist))+
+  stat_slab(alpha = 0.5)+
+  geom_ribbon(data = lik, aes(ymax = density), ymin = 0, color = "transparent", alpha = 0.5)+
+  scale_fill_manual(name = "", values = c("#4477AA", "#228833", "#CCBB44"))+
+  theme_linedraw()
+```
+
+```{r}
+# fit example model
+prior1 <- prior(normal(-10, 3), class = b)
+
+fit_mcmc <- brm(Reaction ~ Days + (1 | Subject),
+                data = sleepstudy, prior = prior1,
+                cores = 2,
+                sample_prior = "yes")
+
+fit_reml <- lmer(Reaction ~ Days + (1 | Subject),
+                 data = sleepstudy)
+
+# extract prior and posterior samples for Days
+prior_draws <- tibble(b_Days = prior_draws(fit_mcmc, variable = "b")$b)
+post_draws <- as_tibble(as_draws_df(fit_mcmc))
+
+draws <- bind_rows(prior = prior_draws, posterior = post_draws, .id = "dist")
+
+# extract parameter density
+prof <- densityplot(profile(fit_reml, "Days"), bw = "SJ", kernel = "gaussian")
+lik <- tibble(b_Days = seq(prof$x.limits[[1]][1], prof$x.limits[[1]][2], length.out = 201),
+              density = prof$call$data$density,
+              dist = "likelihood")
+
+# plot
+ggplot(draws, aes(x = b_Days, fill = dist))+
+  stat_slab(alpha = 0.5)+
+  geom_ribbon(data = lik, aes(ymax = density), ymin = 0, color = "transparent", alpha = 0.5)+
+  scale_fill_manual(name = "", values = c("#4477AA", "#228833", "#CCBB44"))+
+  theme_linedraw()
+
+summary(fit_mcmc)
+
+```
+```{r}
+
+# fit example model
+prior1 <- prior(normal(-10, 30), class = b)
+
+fit_mcmc <- brm(Reaction ~ Days + (1 | Subject),
+                data = sleepstudy, prior = prior1,
+                cores = 2,
+                sample_prior = "yes")
+
+fit_reml <- lmer(Reaction ~ Days + (1 | Subject),
+                 data = sleepstudy)
+
+# extract prior and posterior samples for Days
+prior_draws <- tibble(b_Days = prior_draws(fit_mcmc, variable = "b")$b)
+post_draws <- as_tibble(as_draws_df(fit_mcmc))
+
+draws <- bind_rows(prior = prior_draws, posterior = post_draws, .id = "dist")
+
+# extract parameter density
+prof <- densityplot(profile(fit_reml, "Days"), bw = "SJ", kernel = "gaussian")
+lik <- tibble(b_Days = seq(prof$x.limits[[1]][1], prof$x.limits[[1]][2], length.out = 201),
+              density = prof$call$data$density,
+              dist = "likelihood")
+
+# plot
+ggplot(draws, aes(x = b_Days, fill = dist))+
+  stat_slab(alpha = 0.5)+
+  geom_ribbon(data = lik, aes(ymax = density), ymin = 0, color = "transparent", alpha = 0.5)+
+  scale_fill_manual(name = "", values = c("#4477AA", "#228833", "#CCBB44"))+
+  theme_linedraw()
+```
+
+
+```{r}
+# fit example model
+prior_c <- prior(cauchy(-10, 2.39))
+
+fit_mcmc <- brm(Reaction ~ Days + (1 | Subject),
+                data = sleepstudy, prior = prior_c,
+                cores = 2,
+                sample_prior = "yes")
+
+fit_reml <- lmer(Reaction ~ Days + (1 | Subject),
+                 data = sleepstudy)
+
+# extract prior and posterior samples for Days
+prior_draws <- tibble(b_Days = prior_draws(fit_mcmc, variable = "b")$b)
+post_draws <- as_tibble(as_draws_df(fit_mcmc))
+
+draws <- bind_rows(prior = prior_draws, posterior = post_draws, .id = "dist")
+
+# extract parameter density
+prof <- densityplot(profile(fit_reml, "Days"), bw = "SJ", kernel = "gaussian")
+lik <- tibble(b_Days = seq(prof$x.limits[[1]][1], prof$x.limits[[1]][2], length.out = 201),
+              density = prof$call$data$density,
+              dist = "likelihood")
+
+# plot
+ggplot(draws, aes(x = b_Days, fill = dist))+
+  stat_slab(alpha = 0.5)+
+  geom_ribbon(data = lik, aes(ymax = density), ymin = 0, color = "transparent", alpha = 0.5)+
+  scale_fill_manual(name = "", values = c("#4477AA", "#228833", "#CCBB44"))+
+  theme_linedraw()
+summary(fit_mcmc)
+
+```
+
+```{r}
+library(ggplot2)
+tibble(x = seq(-30, 10, length.out = 400)) |>
+  mutate(
+    normal = dnorm(x, -10, 3),
+    cauchy = dcauchy(x, -10, 3)
+  ) |>
+  pivot_longer(-x, names_to = "dist", values_to = "density") |>
+  ggplot(aes(x, density, color = dist)) +
+  geom_line(linewidth = 1) +
+  theme_minimal()
+
+```
+```{r}
+# analytic center densities
+norm_peak <- dnorm(-10, mean = -10, sd = 3)   # normal location -10, sd 3
+cauchy_peak <- dcauchy(-10, location = -10, scale = 3) # cauchy location -10, scale 3
+norm_peak; cauchy_peak
+
+
+```
 
