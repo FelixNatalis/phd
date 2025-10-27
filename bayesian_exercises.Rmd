@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ## R Markdown
 
 ```{r}
+library(ggplot2)
 x <- seq(-5, 10, by = .1)
 
 y <- 0.5*dnorm(x, mean = 1, sd = 2) + 0.5*dnorm(x,2,2)
@@ -456,5 +457,16 @@ ggplot(mydata, aes(x)) +
   geom_histogram(aes(y = ..density..), binwidth = 0.5,
                  fill = "cornsilk", color = "black") +
   stat_function(fun = dnorm, args = list(mean = mean(diff), sd = sd(diff)), color = "maroon")
+```
+
+
+```{r}
+# Creating the Sequence
+gfg = seq(0,1, by=0.01)
+
+# Case 3
+plot(gfg, dbeta(gfg, 4,4), xlab = "X",
+     ylab = "Beta Density", type = "l",
+     col = "Red") 
 ```
 
