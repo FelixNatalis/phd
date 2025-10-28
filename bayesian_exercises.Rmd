@@ -469,4 +469,184 @@ plot(gfg, dbeta(gfg, 4,4), xlab = "X",
      ylab = "Beta Density", type = "l",
      col = "Red") 
 ```
+```{r}
+# robust stuff
+set.seed(123)
+
+n <- 3
+theta_true <- 2
+sigma_true <- 1
+y <- rnorm(n, mean = theta_true, sd = sigma_true)
+
+data <- data.frame(y = y)
+
+library(brms)
+
+base_prior <- prior(normal(0, 2), class = "Intercept")
+
+fit_base <- brm(
+  y ~ 1,
+  data = data,
+  prior = base_prior,
+  family = gaussian(),
+  seed = 123,
+  iter = 2000,
+  chains = 4
+)
+
+```
+
+```{r}
+priors_list <- list(
+  prior(normal(0, 2), class = "Intercept"),  # base
+  prior(normal(0, 5), class = "Intercept"),  # more diffuse
+  prior(normal(2, 2), class = "Intercept"),  # shifted mean
+  prior(normal(-2, 2), class = "Intercept"), # shifted the other way
+  prior(student_t(3, 0, 2), class = "Intercept") # heavy-tailed prior
+)
+
+```
+
+```{r}
+fits <- lapply(priors_list, function(pr) {
+  brm(y ~ 1, data = data, prior = pr,
+      family = gaussian(), seed = 123, iter = 2000, chains = 4,
+      refresh = 0)
+})
+
+library(dplyr)
+
+posterior_summary <- function(fit) {
+  s <- as.data.frame(summary(fit)$fixed)
+  # Try different possible column names
+  ci_lower <- intersect(c("l-95% CI", "Q2.5"), names(s))
+  ci_upper <- intersect(c("u-95% CI", "Q97.5"), names(s))
+  
+  # Pick the first matching names
+  s_out <- s[, c("Estimate", ci_lower[1], ci_upper[1])]
+  names(s_out) <- c("Estimate", "Lower", "Upper")
+  s_out
+}
+
+results <- lapply(fits, posterior_summary)
+names(results) <- c("Normal(0,2)", "Normal(0,5)", "Normal(2,2)",
+                    "Normal(-2,2)", "StudentT(3,0,2)")
+
+bind_rows(results, .id = "Prior")
+```
+
+```{r}
+library(bayesplot)
+
+posterior_draws <- lapply(fits, as_draws_df)
+names(posterior_draws) <- names(results)
+
+```
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Define a grid of theta values
+theta <- seq(-8, 8, length.out = 400)
+
+priors_df <- tibble(
+  theta = theta,
+  `Normal(0,2)`   = dnorm(theta, 0, 2),
+  `Normal(0,5)`   = dnorm(theta, 0, 5),
+  `Normal(2,2)`   = dnorm(theta, 2, 2),
+  `Normal(-2,2)`  = dnorm(theta, -2, 2),
+  `StudentT(3,0,2)` = dt((theta - 0)/2, df = 3) / 2  # scaled t
+) |>
+  tidyr::pivot_longer(-theta, names_to = "Prior", values_to = "Density")
+
+ggplot(priors_df, aes(x = theta, y = Density, color = Prior)) +
+  geom_line(size = 1.2) +
+  theme_minimal(base_size = 14) +
+  labs(title = "Prior Distributions for θ",
+       x = expression(theta), y = "Density") +
+  scale_color_brewer(palette = "Dark2")
+
+```
+
+```{r}
+library(posterior)
+
+posterior_draws <- lapply(fits, as_draws_df)
+names(posterior_draws) <- names(priors_list)
+names(posterior_draws) <- c("Normal(0,2)", "Normal(0,5)", "Normal(2,2)",
+                            "Normal(-2,2)", "StudentT(3,0,2)")
+
+```
+
+```{r}
+library(tibble)
+library(dplyr)
+
+library(tibble)
+library(dplyr)
+
+post_df <- bind_rows(
+  lapply(names(posterior_draws), function(nm) {
+    df <- posterior_draws[[nm]]
+    tibble(theta = df$b_Intercept, Prior = nm)
+  })
+)
+
+
+ggplot(post_df, aes(x = theta,  color = Prior)) +
+  geom_density(alpha = 0.3, size = 1) +
+  theme_minimal(base_size = 14) +
+  labs(title = "Posterior Distributions under Different Priors",
+       x = expression(theta),
+       y = "Density")
+
+```
+
+```{r}
+theta_grid <- seq(-5, 5, length.out = 400)
+
+priors_df <- tibble(
+  theta = theta_grid,
+  `Normal(0,2)`   = dnorm(theta_grid, 0, 2),
+  `Normal(0,5)`   = dnorm(theta_grid, 0, 5),
+  `Normal(2,2)`   = dnorm(theta_grid, 2, 2),
+  `Normal(-2,2)`  = dnorm(theta_grid, -2, 2),
+  `StudentT(3,0,2)` = dt((theta_grid - 0)/2, df = 3) / 2
+) |>
+  tidyr::pivot_longer(-theta, names_to = "Prior", values_to = "Density")
+
+ggplot() +
+ 
+  stat_function(fun = dnorm, n = 101, args = list(mean = 2, sd = 1)) + ylab("") +
+  scale_y_continuous(breaks = NULL)+
+  geom_line(data = priors_df, aes(x = theta, y = Density, color = Prior),
+            linewidth = 0.7, linetype = "dashed") +
+  geom_density(data = post_df, aes(x = theta,  color = Prior),
+               alpha = 0.3, linewidth = .7) +
+  theme_minimal(base_size = 14) +
+  labs(title = "Prior (dashed) vs Posterior (solid) Distributions",
+       x = expression(theta), y = "Density") 
+
+```
+
+```{r}
+# e-contamination
+
+prior = mixture((1-e)*normal(0,2), e*normal(5,2), order = 'mu')
+
+prior <- c(prior(normal(-2.5,.1), Intercept, dpar = mu1),
+            prior(normal(7,.1), Intercept, dpar = mu2),
+            prior(normal(-8,1), alpha2))
+
+model <- brm(bf(formula = accuracy  ~ 1, 
+                    theta1 = 1, theta2 = 3),
+                    data = dat,
+                    family = mix,
+                    warmup = 1000, iter = 5000, 
+                    cores = parallel::detectCores(),
+                    chains = 4, control = list(adapt_delta = .97), 
+                    prior = prior,
+                    inits = 0,
+                    save_pars = save_pars(all = TRUE))
+```
 
