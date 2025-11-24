@@ -129,7 +129,9 @@ fit_normal1 <- brm(
 library(ggplot2)
 library(dplyr)
 install.packages("bayesplot")
+install.packages("tidyr")
 library(bayesplot)
+library(tidyr)
 fit_normal1
 color_scheme_set("mix-blue-red")
 parameters <- c("b_Intercept", "b_habitatForest", "sigma")
@@ -650,3 +652,48 @@ model <- brm(bf(formula = accuracy  ~ 1,
                     save_pars = save_pars(all = TRUE))
 ```
 
+
+```{r}
+# simulation
+library(MASS)
+library(ggplot2)
+
+# squared exponential kernel
+k_se <- function(x1, x2, ell, sigma2) {
+  outer(x1, x2, function(a, b)
+    sigma2 * exp(-(a - b)^2 / (2 * ell^2))
+  )
+}
+
+x <- seq(0, 10, length.out = 200)
+
+simulate_gp <- function(ell, sigma2) {
+  K <- k_se(x, x, ell, sigma2)
+  L <- chol(K + 1e-6 * diag(length(x)))
+  drop(t(L) %*% rnorm(length(x)))
+}
+
+# param grid
+ells    <- c(0.3, 1.0)
+vars    <- c(0.5, 2.0)
+
+results <- list()
+
+for (ell in ells) {
+  for (v in vars) {
+    f <- simulate_gp(ell, v)
+    results[[paste(ell, v, sep="_")]] <-
+      data.frame(x = x, f = f, ell = ell, var = v)
+  }
+}
+
+df <- do.call(rbind, results)
+
+ggplot(df, aes(x, f)) +
+  geom_line() +
+  facet_grid(ell ~ var, labeller = label_both) +
+  theme_minimal() +
+  labs(title = "Gaussian Process Prior Samples (Squared Exponential Kernel)",
+       y = "f(x)")
+
+```
