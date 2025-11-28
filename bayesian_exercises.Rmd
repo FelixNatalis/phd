@@ -6,6 +6,7 @@ date: "2025-10-16"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+set.seed(144)
 ```
 
 ## R Markdown
@@ -654,7 +655,7 @@ model <- brm(bf(formula = accuracy  ~ 1,
 
 
 ```{r}
-# simulation
+# prior predictive incorrect
 library(MASS)
 library(ggplot2)
 
@@ -673,6 +674,7 @@ simulate_gp <- function(ell, sigma2) {
   drop(t(L) %*% rnorm(length(x)))
 }
 
+#! change this
 # param grid
 ells    <- c(0.3, 1.0)
 vars    <- c(0.5, 2.0)
@@ -697,3 +699,119 @@ ggplot(df, aes(x, f)) +
        y = "f(x)")
 
 ```
+```{r}
+# prior predictive redo
+
+set.seed(144)
+# squared exponential kernel
+k_se <- function(x1, x2, lambda, sigma) {
+  outer(x1, x2, function(a, b)
+    (sigma^2) * exp(-(a - b)^2 / (2 * lambda^2))
+  )
+}
+
+x <- seq(0, 10, length.out = 200)
+
+simulate_gp <- function(lambda, sigma) {
+  K <- k_se(x, x, lambda, sigma)
+  L <- chol(K + 1e-6 * diag(length(x)))
+  drop(t(L) %*% rnorm(length(x)))
+}
+
+# hyperparameter grids
+ig_alpha <- c(1, 2, 3)
+ig_beta  <- c(1, 2, 3)
+
+ht_mu   <- 0
+ht_df   <- c(3, 5, 7)
+ht_scale <- c(0.5, 1.0)
+
+results <- list()
+
+
+idx <- 1
+for (a in ig_alpha) {
+  for (b in ig_beta) {
+    for (df_ in ht_df) {
+      for (s in ht_scale) {
+
+        lambda_draw   <- 1 / rgamma(1, shape = a, rate = b) # inv-gamma
+        sigma_draw <- ht_mu + s * varhalfT(runif(1), n = df_)#abs(rt(1, df = df_) * s) # half-t
+
+        f <- simulate_gp(lambda_draw, sigma_draw)
+
+        results[[idx]] <-
+          data.frame(x = x,
+                     f = f,
+                     lambda = lambda_draw,
+                     sigma = sigma_draw,
+                     alpha = a,
+                     beta = b,
+                     df = df_,
+                     scale = s)
+        idx <- idx + 1
+      }
+    }
+  }
+}
+
+
+df <- do.call(rbind, results)
+
+ggplot(df, aes(x, f)) +
+  geom_line(alpha = 0.7) +
+  facet_grid(alpha + beta ~ df + scale, labeller = label_both) +
+  theme_minimal() +
+  labs(title = "Gaussian Process Prior Samples (Squared Exponential Kernel)",
+       y = "f(x)")
+
+```
+
+
+```{r}
+# half-t 
+library(VaRES)
+
+# parameters for half-t
+mu <- 5
+df  <- 1
+scale <- 2
+
+# grid
+x <- seq(0, 10, length.out = 500)
+
+d_halfT_scaled <- function(x, df, mu, scale) {
+  z <- (x - mu) / scale
+  z[z < 0] <- NA                 
+  dhalfT(z, n = df) / scale
+}
+
+?dhalfT
+
+y <- d_halfT_scaled(x, df, mu, scale)
+
+plot(x, y, type = "l", lwd = 2,
+     main = paste0("Half-t Distribution (df = ", df, ", mu = ", mu,  ", scale = ", scale, ")"),
+     xlab = "x", ylab = "density")
+
+```
+```{r} 
+# inverse-gaussian
+library(statmod)
+
+# parameters for inv-gaussian
+mean <- 3
+shape  <- 1
+
+# grid
+x <- seq(0, 10, length.out = 500)
+
+y <- dinvgauss(x, mean=mean, shape=shape)
+
+plot(x, y, type = "l", lwd = 2,
+     main = paste0("Inv-Gaussian (mean = ", mean, ", shape = ", shape, ")"),
+     xlab = "x", ylab = "density")
+
+
+```
+
