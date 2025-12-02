@@ -3,6 +3,8 @@ library(ggplot2)
 library(VaRES)
 library(digest)
 
+n_functions = 10
+
 # Kernel
 k_se <- function(x1, x2, lambda, sigma) {
   outer(x1, x2, function(a, b)
@@ -22,6 +24,7 @@ ui <- fluidPage(
       tags$h4("Hyperparameters for λ"),
       sliderInput("ig_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
       sliderInput("ig_beta", "Inverse-Gamma beta:", 1, 15, 1),
+      checkboxInput("lambda_mle", "Use MLE", FALSE),
       actionButton("draw_lambda", "Draw New Lambda"),
       tags$hr(),
       
@@ -29,18 +32,20 @@ ui <- fluidPage(
       sliderInput("ht_mu", "Half-t mean:", 0, 15, 0),
       sliderInput("ht_df", "Half-t degrees of freedom:", 1, 5, 4),
       sliderInput("ht_scale", "Half-t scale:", 1, 15, 1),
+      checkboxInput("sigma_mle", "Use MLE", FALSE),
       actionButton("draw_sigma", "Draw New Sigma"),
       tags$hr(),
 
       
       tags$h4("Other parameters"),
-      sliderInput("nfunc", "Number of Functions:", 1, 10, 3),
+      sliderInput("nfunc", "Number of Functions:", 1, n_functions, 3),
       sliderInput("npoints", "Number of X Points:", 20, 400, 200),
       sliderInput("xmax", "X Range:", 2, 20, 10),
       actionButton("draw_gp", "Draw GP")
     ),
     
     mainPanel(
+      #actionButton("restart", "Restart Session"),
       fluidRow(
         column(6, plotOutput("plot_ig", height = "250px")),
         column(6, plotOutput("plot_ht", height = "250px"))
@@ -56,22 +61,35 @@ ui <- fluidPage(
 
 server <- function(input, output) {
   
-  # Lambda reactive (depends only on IG hyperparameters)
+  #observeEvent(input$restart, {
+ #   session$reload()
+ # })
+  
   lambda_draw <- eventReactive(input$draw_lambda, {
     seed_val <- digest(list(input$ig_alpha, input$ig_beta), algo="xxhash32", serialize=TRUE) |> 
       substr(1,7) |> strtoi(base=16)
     set.seed(seed_val)
-    # draw 1/lambda ~ Gamma(...) ⇒ lambda ~ InvGamma(...)
-    1 / rgamma(1, shape = input$ig_alpha, rate = input$ig_beta)
+    
+    if (isTRUE(input$lambda_mle)) {
+      return(input$ig_beta / (input$ig_alpha + 1))   # MLE of InvGamma(α,β)
+    } else {
+      return(1 / rgamma(1, shape = input$ig_alpha, rate = input$ig_beta))
+    }
   })
   
-  # Sigma reactive (depends only on Half-t hyperparameters)
+  
   sigma_draw <- eventReactive(input$draw_sigma, {
     seed_val <- digest(list(input$ht_mu, input$ht_df, input$ht_scale), algo="xxhash32", serialize=TRUE) |> 
       substr(1,7) |> strtoi(base=16)
     set.seed(seed_val)
-    input$ht_mu + input$ht_scale * varhalfT(runif(1), n=input$ht_df)
+    
+    if (isTRUE(input$sigma_mle)) {
+      return(input$ht_mu)    # half-t MLE occurs at lower bound = μ
+    } else {
+      return(input$ht_mu + input$ht_scale * varhalfT(runif(1), n=input$ht_df))
+    }
   })
+  
   
   # GP functions
   gp_funcs <- reactive({
@@ -109,7 +127,7 @@ server <- function(input, output) {
     
     x_orig <- seq(0, 10, length.out = 200)
     funcs <- replicate(
-      100,
+      n_functions,
       simulate_gp(x_orig, lam, sig)
     )
     
