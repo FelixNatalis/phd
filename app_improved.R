@@ -27,7 +27,8 @@ ui <- fluidPage(
       sliderInput("nfunc", "Number of Functions:", 1, 10, 5),
       sliderInput("npoints", "Number of X Points:", 20, 400, 200),
       sliderInput("xmax", "X Range:", 2, 20, 10),
-      actionButton("draw", "Draw New Samples")
+      actionButton("draw_sigma", "Draw New Sigma"),
+      actionButton("draw_lambda", "Draw New Lambda")
     ),
     mainPanel(plotOutput("gpPlot", height = "600px"))
   )
@@ -36,7 +37,7 @@ ui <- fluidPage(
 server <- function(input, output) {
   
   # Lambda reactive (depends only on IG hyperparameters)
-  lambda_draw <- eventReactive(input$draw, {
+  lambda_draw <- eventReactive(input$draw_lambda, {
     seed_val <- digest(list(input$ig_alpha, input$ig_beta), algo="xxhash32", serialize=TRUE) |> 
       substr(1,7) |> strtoi(base=16)
     set.seed(seed_val)
@@ -44,7 +45,7 @@ server <- function(input, output) {
   })
   
   # Sigma reactive (depends only on Half-t hyperparameters)
-  sigma_draw <- eventReactive(input$draw, {
+  sigma_draw <- eventReactive(input$draw_sigma, {
     seed_val <- digest(list(input$ht_mu, input$ht_df, input$ht_scale), algo="xxhash32", serialize=TRUE) |> 
       substr(1,7) |> strtoi(base=16)
     set.seed(seed_val)

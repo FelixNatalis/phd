@@ -700,6 +700,8 @@ ggplot(df, aes(x, f)) +
 
 ```
 ```{r}
+library(ggplot2)
+library(VaRES)
 # prior predictive redo
 
 set.seed(144)
@@ -710,9 +712,9 @@ k_se <- function(x1, x2, lambda, sigma) {
   )
 }
 
-x <- seq(0, 10, length.out = 200)
+x_grid <- seq(0, 10, length.out = 200)
 
-simulate_gp <- function(lambda, sigma) {
+simulate_gp <- function(x, lambda, sigma) {
   K <- k_se(x, x, lambda, sigma)
   L <- chol(K + 1e-6 * diag(length(x)))
   drop(t(L) %*% rnorm(length(x)))
@@ -738,10 +740,10 @@ for (a in ig_alpha) {
         lambda_draw   <- 1 / rgamma(1, shape = a, rate = b) # inv-gamma
         sigma_draw <- ht_mu + s * varhalfT(runif(1), n = df_)#abs(rt(1, df = df_) * s) # half-t
 
-        f <- simulate_gp(lambda_draw, sigma_draw)
+        f <- simulate_gp(x_grid, lambda_draw, sigma_draw)
 
         results[[idx]] <-
-          data.frame(x = x,
+          data.frame(x = x_grid,
                      f = f,
                      lambda = lambda_draw,
                      sigma = sigma_draw,
