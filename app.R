@@ -3,6 +3,7 @@ library(shiny)
 library(ggplot2)
 library(digest)
 library(VaRES)
+library(statmod)
 
 set.seed(144)
 
@@ -13,12 +14,14 @@ k_se <- function(x1, x2, lambda, sigma) {
   )
 }
 
-#GP prior 
-simulate_gp <- function(x, lambda, sigma) {
+simulate_gp <- function(x, lambda, sigma, mean_fun = function(x) 0) {
   K <- k_se(x, x, lambda, sigma)
   L <- chol(K + 1e-6 * diag(length(x)))
-  drop(t(L) %*% rnorm(length(x)))
+  m <- mean_fun(x)
+  f <- m + t(L) %*% rnorm(length(x))
+  drop(f)
 }
+
 
 ui <- fluidPage(
   
@@ -27,67 +30,85 @@ ui <- fluidPage(
   sidebarLayout(
     
     sidebarPanel(
-      sliderInput("ig_alpha", "Inverse-Gamma alpha:", 
-                  min = 1, max = 15, value = 1, step = 1),
+      #sliderInput("lambda", "lambda:", 
+      #            min = 0, max = 15, value = 1, step = 1),
       
-      sliderInput("ig_beta", "Inverse-Gamma beta:", 
-                  min = 1, max = 15, value = 1, step = 1),
+      #sliderInput("sigma", "sigma:", 
+      #            min = 0, max = 50, value = 1, step = 5),
+
       
-      sliderInput("ht_mu", "Half-t mean:", 
-                  min = 0, max = 15, value = 0, step = 1),
+      #sliderInput("scale", "scale:", 
+       #           min = 0, max = 10, value = 1, step = 1),
       
-      sliderInput("ht_df", "Half-t degrees of freedom:", 
-                  min = 1, max = 5, value = 4, step = 1),
+    #  sliderInput("df", "df:", 
+     #             min = 0, max = 10, value = 1, step = 1),     
       
-      sliderInput("ht_scale", "Half-t scale:", 
-                  min = 1, max = 15, value = 1, step = 1),
+      sliderInput("mean", "mean:", 
+                  min = 0, max = 10, value = 1, step = 1),
       
-      sliderInput("nfunc", "Number of Functions to Draw:",
-                  min = 1, max = 20, value = 5, step = 1),
+      sliderInput("shape", "shape:", 
+                  min = 0, max = 10, value = 1, step = 1),
       
-      sliderInput("npoints", "Number of X Points:",
-                  min = 20, max = 400, value = 200, step = 10),
-      
-      sliderInput("xmax", "X Range (0 to Xmax):",
-                  min = 2, max = 20, value = 10, step = 1),
-      
-      actionButton("draw", "Draw New Samples", class = "btn-primary")
     ),
     
     mainPanel(
-      plotOutput("gpPlot", height = "600px")
+      #plotOutput("gpPlot", height = "600px"),
+      #plotOutput("plot_ht", height = "600px"),
+      plotOutput("plot_invgauss", height = "600px")
     )
   )
 )
 
 server <- function(input, output) {
+
+  output$plot_ht <- renderPlot({
+    
+    x <- seq(0, 15, length.out = 400)
+    df <- input$df
+    mu <- input$mean
+    sc <- input$scale
+    
+    dens <- 2 * dt((x - mu)/sc, df = df) / sc
+    dens[x < mu] <- 0
+    d <- data.frame(x=x, y=dens)
+    
+    ggplot(d, aes(x,y)) +
+      geom_line(color="darkgreen", linewidth=1) +
+      labs(title="Half-t prior for σ^2",
+           y="density", x="σ^2") +
+      theme_minimal(base_size=14)
+  })
   
-  gp_data <- eventReactive(input$draw, {
+  output$plot_invgauss <- renderPlot({
     
-    seed_val <- digest(
-      list(input$ig_alpha, input$ig_beta,
-           input$ht_mu, input$ht_df, input$ht_scale, input$nfunc),
-           #, input$npoints, input$xmax),
-      algo = "xxhash32",
-      serialize = TRUE
-    ) |> substr(1, 7) |> strtoi(base = 16)
+    # parameters for inv-gaussian
+    mean<-input$mean
+    shape<-input$shape 
     
-    set.seed(seed_val)
+    # grid
+    x <- seq(0, 10, length.out = 500)
     
-    x <- seq(0, input$xmax, length.out = input$npoints)
+    y <- dinvgauss(x, mean=mean, shape=shape)
     
-    lambda_draw   <- 1 / rgamma(1, shape = input$ig_alpha, rate = input$ig_beta) 
-    sigma_draw <- input$ht_mu + input$ht_scale * varhalfT(runif(1), n = input$ht_df)
+    plot(x, y, type = "l", lwd = 2,
+         main = paste0("Inv-Gaussian (mean = ", mean, ", shape = ", shape, ")"),
+         xlab = "x", ylab = "density")
+  })
+    
+  
+  gp_data <- eventReactive(c(input$sigma, input$lambda), {
+    
+    x <- seq(0, 20, length.out = 200)
     
     funcs <- replicate(
-      input$nfunc,
-      simulate_gp(x, lambda_draw, sigma_draw)  
+      2,
+      simulate_gp(x, input$lambda, input$sigma)#, mean_fun = function(x) 10 + 5 * x)  
     )
     
     df <- data.frame(
-      x = rep(x, input$nfunc),
+      x = rep(x, 2),
       f = as.vector(funcs),
-      func = rep(1:input$nfunc, each = length(x))
+      func = rep(1:2,each = length(x))
     )
     
     df
