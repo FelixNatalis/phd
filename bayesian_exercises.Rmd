@@ -818,6 +818,111 @@ plot(x, y, type = "l", lwd = 2,
 
 
 ```{r}
+### shrinkage of horsechoe priors
+set.seed(1)
+N <- 100000
 
+# Half-normal prior on sigma_f
+sigma_halfnorm <- abs(rnorm(N, mean = 4, sd = 1))
+
+# Half-t prior on sigma_f (df = 3)
+sigma_halft <- abs(rt(N, df = 4))
+
+# Induced variance
+var_halfnorm <- sigma_halfnorm^2
+var_halft <- sigma_halft^2
+
+# Plot densities
+par(mfrow=c(1,2))
+plot(density(sigma_halfnorm), main="Induced prior on variance\nHalf-Normal on σ_f",
+     xlab=expression(sigma[f]^2), xlim=c(0,15))
+abline(v=0, col="red")
+plot(density(var_halfnorm), main="Induced prior on variance\nHalf-Normal on σ_f",
+     xlab=expression(sigma[f]^2), xlim=c(0,15))
+abline(v=0, col="red")
+
+
+```
+
+```{r}
+
+
+plot(density(sigma_halft), main="Induced prior on variance\nHalf-t(3) on σ_f",
+     xlab=expression(sigma[f]^2), xlim=c(0,10))
+abline(v=0, col="red")
+
+plot(density(var_halft), main="Induced prior on variance\nHalf-t(3) on σ_f",
+     xlab=expression(sigma[f]^2), xlim=c(0,10))
+abline(v=0, col="red")
+```
+
+```{r}
+### shrinkage of horsechoe priors
+set.seed(1)
+N <- 100000
+
+library(statmod)
+
+# parameters for inv-gaussian
+mean <- 6
+shape  <- 3
+
+# grid
+x <- seq(0, 10, length.out = 500)
+
+y <- dinvgauss(x, mean=mean, shape=shape)
+
+y_2 <- y^2
+
+# Plot densities
+plot(x, y, type = "l", lwd = 2,
+     main = paste0("Inv-Gaussian (mean = ", mean, ", shape = ", shape, ")"),
+     xlab = "x", ylab = "density")
+
+plot(x, y_2, type = "l", lwd = 2,
+     main = paste0("Inv-Gaussian (mean = ", mean, ", shape = ", shape, ")"),
+     xlab = "x", ylab = "density")
+
+```
+
+```{r}
+# grid
+x <- seq(0, 1, length.out = 500)
+
+y <- x^2
+
+# Plot densities
+plot(x, y, type = "l", lwd = 2,
+     main = paste0("Inv-Gaussian (mean = ", mean, ", shape = ", shape, ")"),
+     xlab = "x", ylab = "density")
+
+```
+
+```{r}
+### shrinkage of horsechoe priors
+set.seed(1)
+N <- 100000
+
+library(statmod)
+
+# parameters for inv-gaussian
+mean <- 6
+shape  <- 3
+
+# grid
+x <- seq(0, 10, length.out = 500)
+
+y <- dnorm(x, mean = 1, sd = 2)
+
+y_2 <- y^2
+
+# Plot densities
+plot(x, y, type = "l", lwd = 2,
+     main = paste0("Inv-Gaussian (mean = ", mean, ", shape = ", shape, ")"),
+     xlab = "x", ylab = "density")
+
+plot(x, y_2, type = "l", lwd = 2,
+     main = paste0("Inv-Gaussian (mean = ", mean, ", shape = ", shape, ")"),
+     xlab = "x", ylab = "density")
 ```
 
