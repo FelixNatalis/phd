@@ -22,10 +22,9 @@ simulate_gp <- function(x, lambda, sigma_k, sigma_n = 1e-3, mean_fun = function(
   
   m <- mean_fun(x)
   
-  # GP prior draw
   f <- m + t(L) %*% rnorm(length(x))
   
-  # Gaussian noise
+  # noise
   eps <- sigma_n * rnorm(length(x))
   
   drop(f + eps)
@@ -119,7 +118,6 @@ server <- function(input, output) {
   })
   
   
-  # GP functions
   gp_funcs <- reactive({
     req(lambda_draw(), sigma_2_draw())
     
@@ -190,7 +188,7 @@ server <- function(input, output) {
   
   
   
-  ### --- PRIOR PLOTS ---------------------------------------------------------
+  ### plots
   
   # Inverse-Gamma prior for lambda
   output$plot_ig <- renderPlot({
@@ -288,7 +286,7 @@ server <- function(input, output) {
   
   
   
-  ### --- GP PLOT -------------------------------------------------------------
+  # gp
   output$gpPlot <- renderPlot({
     req(gp_data())
     
