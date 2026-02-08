@@ -1,0 +1,371 @@
+---
+title: "gp_analysis"
+output: html_document
+date: "2026-02-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(brms)
+library(rstan)
+library(rstanarm)
+library(remotes)
+library(tidybayes)
+library(bridgesampling)
+library(shinystan)
+library(mgcv)
+
+#install.packages("tidyverse")
+#install.packages("brms")
+#install.packages("rstan")
+#install.packages("rstanarm")
+#install.packages("remotes")
+#install.packages("tidybayes")
+#install.packages("bridgesampling")
+#install.packages("shinystan")
+#install.packages("mgcv")
+
+
+#remotes::install_github("michael-franke/aida-package")
+
+#remotes::install_github("michael-franke/faintr")
+
+#remotes::install_github("CogSciPrag/cspplot")
+
+library(aida)
+library(faintr)
+library(cspplot)
+
+# these options help Stan run faster
+options(mc.cores = parallel::detectCores())
+
+# use the CSP-theme for plotting
+theme_set(theme_csp())
+
+# global color scheme from CSP
+project_colors = cspplot::list_colors() |> pull(hex)
+# names(project_colors) <- cspplot::list_colors() |> pull(name)
+
+# setting theme colors globally
+scale_colour_discrete <- function(...) {
+  scale_colour_manual(..., values = project_colors)
+}
+scale_fill_discrete <- function(...) {
+   scale_fill_manual(..., values = project_colors)
+}
+```
+
+```{r}
+get_GP_simulation <- 
+  function(x = seq(0,10, by = 0.1), 
+           Intercept = 0, 
+           slope = 1, 
+           sigma = 1, 
+           sigma_f=0.5, 
+           lambda=100, 
+           seed = NULL) {
+    
+    if (! is.null(seed)){
+      set.seed(seed)
+    }
+    
+    # number of points to generate prediction for
+    N <- length(x)
+    
+    # linear predictor (vanilla LM)
+    eta = Intercept + slope * x
+    
+    # kernel function (here: radial basis function kernel)
+    get_covmatrix <- function(x, sigma_f, lambda) {
+      K = matrix(0, nrow=N, ncol=N)
+      for (i in 1:N) {
+        for (j in 1:N) {
+          K[i,j] = sigma_f^2 * exp(sqrt((i-j)^2) / (-2 *lambda))
+        }
+      }
+      return(K)
+    }
+    
+    # covariance matrix
+    K <- get_covmatrix(x, sigma_f, lambda)
+    
+    # Gaussian process wiggles
+    epsilon_gp <- mvtnorm::rmvnorm(
+      n     = 1, 
+      mean  = rep(0, N),
+      sigma = K)[1,]
+    
+    # central tendency
+    mu <- epsilon_gp + eta
+    
+    # data prediction
+    y <- rnorm(N, mu, sigma)
+      
+    tibble(x, eta, mu, y) 
+  }
+
+plot_GP_simulation <- function(GP_simulation) {
+  GP_simulation |> 
+    ggplot(aes(x = x, y = eta )) + 
+    geom_line(color = project_colors[1], size = 1.25) +
+    geom_line(aes(y = mu), color = project_colors[2], size = 1.25) +
+    geom_point(aes(y = y), color = project_colors[3], alpha = 0.7, size = 1.2)
+}
+```
+
+```{r}
+get_GP_simulation(
+  x = seq(-1,1, length.out = 500), 
+  Intercept = 0, 
+  slope = 0.3, 
+  sigma_f = 0.05, 
+  lambda  = 20, 
+  sigma = 0.05) |> 
+  plot_GP_simulation()
+```
+
+```{r}
+GP_simulation <- get_GP_simulation(
+  x = seq(-1,1, length.out = 100), 
+  Intercept = 0, 
+  slope = 1, 
+  sigma_f = 0.5, 
+  lambda  = 2, 
+  sigma = 0.0001,
+  seed = 1996)
+
+plot_GP_simulation(GP_simulation)
+```
+
+```{r}
+# results: hide
+fit_GPR <- 
+  brms::brm(
+    formula = y ~ gp(x) + x,
+    data    = GP_simulation,
+    iter    = 4000
+  )
+```
+
+```{r}
+summary(fit_GPR)
+```
+
+```{r}
+conditional_effects(fit_GPR)
+```
+
+```{r}
+x <- c(2007, 2008, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024)
+y <- c(74.9, 77.1, 75.3, 74.0, 69.2, 70.8, 73.5, 66.6, 64.5, 65.8, 57.1, 62.3, 55.8, 68.1, 64.1, 64.0, 60.7)
+
+data<- data.frame(x, y)
+
+ggplot(data, aes(x = x, y = y )) + 
+    geom_line(color = project_colors[1], size = 1.25) +
+    geom_point(aes(y = y), color = project_colors[3], alpha = 0.7, size = 1.2)
+```
+
+```{r}
+data$x_s <- (scale(data$x))[,1]
+
+fit_GPR_2 <- brms::brm(
+  y ~ gp(x_s, kappa = 1e-8),
+  data = data,
+  iter = 4000
+)
+
+
+summary(fit_GPR_2)
+```
+
+```{r}
+newdata <- data.frame(
+  x_s = seq(min(data$x_s), max(data$x_s), length.out = 200)
+)
+
+pred <- fitted(
+  fit_GPR_2,
+  newdata = newdata,
+  re_formula = NA
+)
+
+```
+```{r}
+
+```
+###############################################
+
+```{r}
+# Пример (замени "OSF_URL" на фактический CSV-URL из OSF):
+panel_japan <- read.csv("C://Users/margo/Downloads/data.csv", stringsAsFactors = FALSE)
+head(panel_japan)
+
+
+j_data<- panel_japan[, c("cw_ID", "cv_r1", "wave", "sleep_x", "only_jpn")]
+
+j_data$cv_r1 <- scale(j_data$cv_r1)[,1]
+
+j_data_1 <- subset(j_data, cw_ID == "8491")
+
+library(lgpr)
+library(dplyr)
+
+j_sub <- j_data[1:300, ] %>%
+  mutate(
+    wave_s = as.numeric(scale(wave)),
+    id     = as.integer(factor(cw_ID))
+  )
+
+```
+
+```{r}
+
+ggplot(j_data_1, aes(x = wave, y = cv_r1 )) + 
+    geom_line(color = project_colors[1], size = 1.25) +
+    geom_point(aes(y = cv_r1), color = project_colors[3], alpha = 0.7, size = 1.2)
+```
+
+```{r}
+j_data_1$wave_s <- (scale(j_data_1$wave))[,1]
+
+fit_GPR_3 <- brms::brm(
+  cv_r1 ~ gp(wave_s, kappa = 1e-2),
+  data = j_data_1,
+  iter = 4000
+)
+
+
+summary(fit_GPR_3)
+```
+
+```{r}
+newdata <- data.frame(
+  wave_s = seq(min(j_data_1$wave_s), max(j_data_1$wave_s), length.out = 200)
+)
+
+pred <- fitted(
+  fit_GPR_3,
+  newdata = newdata,
+  re_formula = NA
+)
+```
+###############################
+```{r}
+#install.packages("lgpr")
+library(lgpr)
+# For reproducibility
+set.seed(123)
+```
+```{r}
+# Plot the average smoothed change in original values on original scale (1 to 7)
+ggplot() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  labs(x = "wave", y = "Dread") +
+#  scale_y_continuous(breaks = seq(1, 7, by = 1), limits = c(1, 7)) +
+#  scale_x_continuous(breaks = seq(-180, 180, by = 30), limits = c(-180, 180)) +
+  theme(legend.position = "none") +
+  theme(aspect.ratio=0.9) +
+geom_smooth(data = j_data, aes(x=wave, y=cv_r1)) +
+  ggtitle("Average dreadfulness levels") +
+  theme(plot.title = element_text(size = 13, face = "bold")) 
+```
+
+```{r}
+# For reproducibility
+set.seed(123)
+
+# Define mean and SD of the log-normal distribution
+mean_priordistribution_lengthscale <- 0
+sd_priordistribution_lengthscale <- 1
+
+# Define warping function
+warpfun <- function(time,warpingparameter){
+  2 / (1 + exp( - warpingparameter * time)) - 1
+}
+
+# Define kernel with warping function
+kernelGP <- function(X1, X2, lengthscale, alpha, warpingparameter, fun=function(x,w){x}){
+  
+  X1mat <- matrix(rep(fun(X1,warpingparameter),length(X2)),nrow=length(X1))
+  X2mat <- matrix(rep(fun(X2,warpingparameter),length(X1)),nrow=length(X1),byrow=TRUE)
+  
+  alpha**2 * exp(- .5 * (X1mat - X2mat) * (X1mat - X2mat) / lengthscale**2 )
+  
+}
+
+n <- 100 
+X <- seq(-100, 100, length=n) 
+mu = rep(0,length(X))
+
+# Set up a 4x4 plotting panel
+par(mfrow = c(4, 4), mar = c(2, 2, 2, 2))
+
+# Loop to generate 16 plots
+for (i in 1:16) {
+
+# Lengthscale parameter
+lengthscale1 <- dlnorm(1, meanlog = mean_priordistribution_lengthscale, sdlog = sd_priordistribution_lengthscale)
+
+# Magnitude parameter (potentially modify prior distribution here!)
+alpha1 <- dlnorm(1, meanlog = 0, sdlog = 1)
+
+# Warping parameter (potentially modify prior distribution here!)
+warpingparameter <- dlnorm(1, meanlog=-0.7,sdlog=0.9)
+covm = kernelGP(X, X, lengthscale = lengthscale1, alpha = alpha1, warpingparameter = warpingparameter, fun = warpfun)
+
+# Intercept
+beta0 <- 0
+
+  # Draw a line from the GP
+  draw_f <- mvtnorm::rmvnorm(1, mean = mu, sigma = covm)
+  
+  # Plot the line
+  plot(X, beta0 + draw_f, type = "l", col = "grey", lwd = 2,
+       ylim = c(beta0 - 2 * alpha1, beta0 + 2 * alpha1),
+       ylab = "y", xlab = "x", main = paste("Plot", i))
+}
+
+prior <- list(
+  alpha = log_normal(0, 1), 
+  ell = log_normal(0, 1),
+  wrp = log_normal(-0.7, 0.9)
+)
+```
+
+
+```{r}
+
+# Fit model
+gp <- lgp(cv_r1 ~ gp_ns(wave) + gp_ns(wave) * zs(factor(cw_ID)), data = j_data[1:300,], prior = prior, sample_f = TRUE)
+```
+
+```{r}
+library(lgpr)
+library(dplyr)
+
+
+
+j_sub <- j_data[1:300, ]
+j_sub$wave_s <- as.numeric(scale(j_sub$wave))
+j_sub$id     <- factor(j_sub$cw_ID)
+
+
+gp <- lgp(
+  cv_r1 ~
+    gp_ns(wave_s) +                 # population-level GP
+    gp_ns(wave_s)*zs(id),          # group-level GP
+  data = j_sub,
+  sample_f = TRUE
+)
+
+summary(gp)
+
+
+```
+
