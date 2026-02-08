@@ -818,6 +818,11 @@ plot(x, y, type = "l", lwd = 2,
 
 
 ```{r}
+
+mu <- 5
+df  <- 4
+scale <- 2
+
 ### shrinkage of horsechoe priors
 set.seed(1)
 N <- 100000
@@ -841,7 +846,31 @@ plot(density(var_halfnorm), main="Induced prior on variance\nHalf-Normal on σ_f
      xlab=expression(sigma[f]^2), xlim=c(0,15))
 abline(v=0, col="red")
 
+```
+```{r}
 
+# grid
+x <- seq(0, 10, length.out = 500)
+
+d_halfT_scaled <- function(x, df, mu, scale) {
+  z <- (x - mu) / scale
+  z[z < 0] <- NA                 
+  dhalfT(z, n = df) / scale
+}
+
+?dhalfT
+
+y <- d_halfT_scaled(x, df, mu, scale)
+
+plot(x, y, type = "l", lwd = 2,
+     main = paste0("Half-t Distribution (df = ", df, ", mu = ", mu,  ", scale = ", scale, ")"),
+     xlab = "x", ylab = "density")
+
+y_2 <- y^2
+
+plot(x, y_2, type = "l", lwd = 2,
+     main = paste0("Half-t Distribution (df = ", df, ", mu = ", mu,  ", scale = ", scale, ")"),
+     xlab = "x", ylab = "density")
 ```
 
 ```{r}
@@ -924,5 +953,50 @@ plot(x, y, type = "l", lwd = 2,
 plot(x, y_2, type = "l", lwd = 2,
      main = paste0("Inv-Gaussian (mean = ", mean, ", shape = ", shape, ")"),
      xlab = "x", ylab = "density")
+```
+```{r}
+library(ggplot2)
+library(magrittr)
+set.seed(15)
+plot_kernel_value <- function(kernel, ...) {
+  tibble::tibble(
+    X1 = seq(0, 5, by = 0.05),
+    X2 = rep(0, length(X1)),
+    kv = purrr::map2_dbl(X1, X2, kernel, ...)
+  ) %>%
+    ggplot(aes(x = X1, y = kv)) +
+    geom_line() +
+    labs(x = "Euclidean distance", y = "kernel value") +
+    theme_minimal()
+}
+```
+
+
+```{r}
+#' Basic Periodic Kernel
+#'
+#' Isotropic basic periodic kernel function generalised to two sets of n and m
+#' observations of d features.
+#'
+#' @param X1 matrix of dimensions (n, d). Vectors are coerced to (1, d).
+#' @param X2 matrix of dimensions (m, d). Vectors are coerced to (1, d).
+#' @param sigma scale parameter, scalar
+#' @param l length scale, scalar
+#' @param omega period parameter, scalar
+#'
+#' @return kernel matrix of dimensions (n, m)
+periodic_kernel <- function(X1, X2, sigma = 1, l = 1, omega = 1) {
+  if (is.null(dim(X1))) dim(X1) <- c(1, length(X1))
+  if (is.null(dim(X2))) dim(X2) <- c(1, length(X2))
+  distance <- (- 2*(X1 %*% t(X2))) %>%
+    add(rowSums(X1**2, dims = 1)) %>%
+    sweep(2, rowSums(X2**2, dims = 1), `+`) %>%
+    sqrt()
+  sigma * exp(-2 * sin(pi * distance / omega)^2 / l^2)
+}
+```
+
+```{r}
+plot_kernel_value(periodic_kernel,  l = 1, omega = 2)
 ```
 
