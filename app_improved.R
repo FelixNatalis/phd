@@ -11,7 +11,7 @@ npoints = 200
 # Kernel
 k_se <- function(x1, x2, lambda, sigma_2) {
   outer(x1, x2, function(a, b)
-    sigma_2 * exp(-(a - b)^2 / (2 * lambda^2))
+    (sigma_2 * exp(-(a - b)^2 / (2 * lambda^2)))
   )
 }
 

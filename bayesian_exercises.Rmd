@@ -971,6 +971,77 @@ plot_kernel_value <- function(kernel, ...) {
 }
 ```
 
+```{r}
+#' Random Samples from a Multivariate Gaussian
+#' 
+#' This implementation is similar to MASS::mvrnorm, but uses chlosky
+#' decomposition instead. This should be more stable but is less efficient than
+#' the MASS implementation, which recycles the eigen decomposition for the
+#' sampling part.
+#'
+#' @param n number of samples to sample
+#' @param mu the mean of each input dimension
+#' @param sigma the covariance matrix
+#' @param epsilon numerical tolerance added to the diagonal of the covariance
+#'  matrix. This is necessary for the Cholesky decomposition, in some cases.
+#'
+#' @return numerical vector of n samples
+rmvnorm <- function(n = 1, mu, sigma, epsilon = 1e-6) {
+    p <- length(mu)
+    if(!all(dim(sigma) == c(p, p))) stop("incompatible dimensions of arguments")
+    ev <- eigen(sigma, symmetric = TRUE)$values
+    if(!all(ev >= -epsilon * abs(ev[1L]))) {
+      stop("The covariance matrix (sigma) is not positive definite")
+    }
+    cholesky <- chol(sigma + diag(p) * epsilon)
+    sample <- rnorm(p*n, 0, 1)
+    dim(sample) <- c(n, p)
+    sweep(sample %*% cholesky, 2, mu, FUN = `+`)
+}
+
+plot_gp <- function(kernel, ...) {
+  n_samples <- 5
+  X_predict <- matrix(seq(-5, 5, length.out = 100), 100, 1)
+  mu <- rep(0, times = length(X_predict))
+  sigma <- rlang::exec(kernel, X1 = X_predict, X2 = X_predict, ...)
+  samples <- rmvnorm(n = n_samples, mu, sigma)
+  p <- tibble::as_tibble(
+    t(samples),
+    .name_repair = ~ paste("sample", seq(1, n_samples))
+  ) %>%
+    dplyr::mutate(
+    x = X_predict,
+    uncertainty = 1.6*sqrt(diag(sigma)),
+    mu = mu,
+    lower = mu - uncertainty,
+    upper = mu + uncertainty
+  ) %>%
+    ggplot(aes(x = x)) +
+    geom_ribbon(
+      aes(ymin = lower, ymax = upper, fill = "89% interval"),
+      alpha = 0.2
+    ) +
+    geom_line(aes(y = mu, colour = "Mean")) +
+    theme_minimal() +
+    labs(
+      y = "y",
+      x = "x",
+      colour = "",
+      fill = ""
+    ) +
+    theme(panel.grid = element_blank())
+  Reduce(
+    `+`,
+    init = p,
+    x = lapply(paste("sample", seq(1, n_samples)), function(s) {
+      geom_line(aes(y = .data[[s]], colour = s), linetype = 2)
+    })
+  ) +
+    scale_colour_brewer(palette = "YlGnBu") +
+    scale_fill_manual(values = list("89% interval" = "#219ebc"))
+}
+```
+
 
 ```{r}
 #' Basic Periodic Kernel
@@ -998,5 +1069,48 @@ periodic_kernel <- function(X1, X2, sigma = 1, l = 1, omega = 1) {
 
 ```{r}
 plot_kernel_value(periodic_kernel,  l = 1, omega = 2)
+```
+
+```{r}
+#' Linear Kernel
+#'
+#' Linear kernel function generalised to two sets of n and m observations of d
+#' features.
+#'
+#' @param X1 matrix of dimensions (n, d). Vectors are coerced to (1, d).
+#' @param X2 matrix of dimensions (m, d). Vectors are coerced to (1, d).
+#' @param sigma homogeneity parameter, scalar
+#'
+#' @return kernel matrix of dimensions (n, m)
+linear_kernel <- function(X1, X2, sigma = 30) {
+  if (is.null(dim(X1))) dim(X1) <- c(1, length(X1))
+  if (is.null(dim(X2))) dim(X2) <- c(1, length(X2))
+  15+ 15*(X1) %*% t(X2)
+}
+
+plot_gp(linear_kernel)
+```
+```{r}
+linear_kernel <- function(X1, X2, sigma = 30) {
+  if (is.null(dim(X1))) dim(X1) <- c(1, length(X1))
+  if (is.null(dim(X2))) dim(X2) <- c(1, length(X2))
+  (15+ 15*(X1) %*% t(X2))*(20+ 150*(X1) %*% t(X2))
+}
+
+plot_gp(linear_kernel)
+```
+
+```{r}
+periodic_kernel <- function(X1, X2, sigma = 1, l = 1, omega = 1) {
+  if (is.null(dim(X1))) dim(X1) <- c(1, length(X1))
+  if (is.null(dim(X2))) dim(X2) <- c(1, length(X2))
+  distance <- (- 2*(X1 %*% t(X2))) %>%
+    add(rowSums(X1**2, dims = 1)) %>%
+    sweep(2, rowSums(X2**2, dims = 1), `+`) %>%
+    sqrt()
+  (sigma * exp(-2 * sin(pi * distance / omega)^2 / l^2))*(sigma * exp(-2 * sin(pi * distance / omega)^2 / l^2))*(sigma * exp(-2 * sin(pi * distance / omega)^2 / l^2))
+}
+plot_kernel_value(periodic_kernel,  l = 1, omega = 2)
+```
 ```
 
