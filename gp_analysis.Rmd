@@ -7,19 +7,10 @@ date: "2026-02-08"
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-
+########## Analysis for simulating GP with an artificial example
 ```{r}
-library(tidyverse)
-library(brms)
-library(rstan)
-library(rstanarm)
-library(remotes)
-library(tidybayes)
-library(bridgesampling)
-library(shinystan)
-library(mgcv)
-
 #install.packages("tidyverse")
+#install.packages("lgpr")
 #install.packages("brms")
 #install.packages("rstan")
 #install.packages("rstanarm")
@@ -28,14 +19,21 @@ library(mgcv)
 #install.packages("bridgesampling")
 #install.packages("shinystan")
 #install.packages("mgcv")
-
-
 #remotes::install_github("michael-franke/aida-package")
-
 #remotes::install_github("michael-franke/faintr")
-
 #remotes::install_github("CogSciPrag/cspplot")
 
+library(tidyverse)
+library(dplyr)
+library(lgpr)
+library(brms)
+library(rstan)
+library(rstanarm)
+library(remotes)
+library(tidybayes)
+library(bridgesampling)
+library(shinystan)
+library(mgcv)
 library(aida)
 library(faintr)
 library(cspplot)
@@ -147,7 +145,7 @@ fit_GPR <-
   brms::brm(
     formula = y ~ gp(x) + x,
     data    = GP_simulation,
-    iter    = 4000
+    iter    = 2000
   )
 ```
 
@@ -159,6 +157,8 @@ summary(fit_GPR)
 conditional_effects(fit_GPR)
 ```
 
+########### Artificial data fits fine
+############ Data of WHR for Benevolence in Netherlands
 ```{r}
 x <- c(2007, 2008, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024)
 y <- c(74.9, 77.1, 75.3, 74.0, 69.2, 70.8, 73.5, 66.6, 64.5, 65.8, 57.1, 62.3, 55.8, 68.1, 64.1, 64.0, 60.7)
@@ -183,6 +183,8 @@ fit_GPR_2 <- brms::brm(
 summary(fit_GPR_2)
 ```
 
+########### 17 observations are not enough
+
 ```{r}
 newdata <- data.frame(
   x_s = seq(min(data$x_s), max(data$x_s), length.out = 200)
@@ -195,55 +197,58 @@ pred <- fitted(
 )
 
 ```
-```{r}
 
-```
-###############################################
+############################################### Analysis of Japan panel on covid, 30 waves
 
 ```{r}
-# Пример (замени "OSF_URL" на фактический CSV-URL из OSF):
-panel_japan <- read.csv("C://Users/margo/Downloads/data.csv", stringsAsFactors = FALSE)
-head(panel_japan)
-
+panel_japan <- read.csv("data.csv", stringsAsFactors = FALSE)
 
 j_data<- panel_japan[, c("cw_ID", "cv_r1", "wave", "sleep_x", "only_jpn")]
 
-j_data$cv_r1 <- scale(j_data$cv_r1)[,1]
-
-j_data_1 <- subset(j_data, cw_ID == "8491")
-
-library(lgpr)
-library(dplyr)
-
-j_sub <- j_data[1:300, ] %>%
+j_data <- j_data %>%
   mutate(
-    wave_s = as.numeric(scale(wave)),
-    id     = as.integer(factor(cw_ID))
-  )
+    wave_s   = as.numeric(scale(wave)),
+    #id       = as.integer(factor(cw_ID)),
+    id       = as.factor(factor(cw_ID)),
+    cv_r1    = as.numeric(scale(cv_r1)),
+    sleep_x  = as.numeric(scale(sleep_x)),
+    only_jpn = as.numeric(scale(as.numeric(only_jpn))
+  ))
 
+j_data<- j_data[, c("id", "cv_r1", "wave_s")]
+
+head(j_data)
 ```
 
+# BRMS analysis on just one person - 30 observations, does not work
 ```{r}
+j_data_1 <- subset(j_data, id == "8491")
 
-ggplot(j_data_1, aes(x = wave, y = cv_r1 )) + 
+ggplot(j_data_1, aes(x = wave_s, y = cv_r1 )) + 
     geom_line(color = project_colors[1], size = 1.25) +
-    geom_point(aes(y = cv_r1), color = project_colors[3], alpha = 0.7, size = 1.2)
+  geom_smooth(color = project_colors[2], size = 1) +  
+  geom_point(aes(y = cv_r1), color = project_colors[3], alpha = 0.7, size = 1.2)
+
+ggplot(j_data_1, aes(x = wave_s, y = sleep_x )) + 
+    geom_line(color = project_colors[1], size = 1.25) +
+    geom_smooth(color = project_colors[2], size = 1) + 
+    geom_point(aes(y = sleep_x), color = project_colors[3], alpha = 0.7, size = 1.2)
+
+ggplot(j_data_1, aes(x = wave_s, y = only_jpn )) + 
+    geom_smooth(color = project_colors[2], size = 1) +
+    geom_line(color = project_colors[1], size = 1.25) +
+  geom_point(aes(y = only_jpn), color = project_colors[3], alpha = 0.7, size = 1.2)
 ```
-
+##### just one person, 17 obs - not working
 ```{r}
-j_data_1$wave_s <- (scale(j_data_1$wave))[,1]
-
 fit_GPR_3 <- brms::brm(
   cv_r1 ~ gp(wave_s, kappa = 1e-2),
   data = j_data_1,
   iter = 4000
 )
 
-
 summary(fit_GPR_3)
-```
 
-```{r}
 newdata <- data.frame(
   wave_s = seq(min(j_data_1$wave_s), max(j_data_1$wave_s), length.out = 200)
 )
@@ -254,24 +259,18 @@ pred <- fitted(
   re_formula = NA
 )
 ```
-###############################
+############################### Analysis with lgpr to study several people
 ```{r}
-#install.packages("lgpr")
-library(lgpr)
 # For reproducibility
 set.seed(123)
-```
-```{r}
-# Plot the average smoothed change in original values on original scale (1 to 7)
+
 ggplot() +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         panel.background = element_blank(), axis.line = element_line(colour = "black")) +
   labs(x = "wave", y = "Dread") +
-#  scale_y_continuous(breaks = seq(1, 7, by = 1), limits = c(1, 7)) +
-#  scale_x_continuous(breaks = seq(-180, 180, by = 30), limits = c(-180, 180)) +
   theme(legend.position = "none") +
   theme(aspect.ratio=0.9) +
-geom_smooth(data = j_data, aes(x=wave, y=cv_r1)) +
+geom_smooth(data = j_data, aes(x=wave_s, y=cv_r1)) +
   ggtitle("Average dreadfulness levels") +
   theme(plot.title = element_text(size = 13, face = "bold")) 
 ```
@@ -340,51 +339,44 @@ prior <- list(
 
 
 ```{r}
+j_sub <- subset(j_data, id %in% c("42040", "8491", "15569", "94338"))
 
-# Fit model
-gp <- lgp(cv_r1 ~ gp_ns(wave) + gp_ns(wave) * zs(factor(cw_ID)), data = j_data[1:300,], prior = prior, sample_f = TRUE)
-```
+#gp <- lgp(
+#  cv_r1 ~
+#    gp_ns(wave_s) +  # population-level GP
+#    gp_ns(wave_s)*zs(id),# group-level GP
+#  data = j_sub,
+#  sample_f = TRUE
+#)
 
-```{r}
-library(lgpr)
-library(dplyr)
-
-
-
-j_sub <- j_data[1:300, ]
-j_sub$wave_s <- as.numeric(scale(j_sub$wave))
-j_sub$id     <- factor(j_sub$cw_ID)
-
-
-gp <- lgp(
+gp_2 <- lgp(
   cv_r1 ~
-    gp_ns(wave_s) +                 # population-level GP
-    gp_ns(wave_s)*zs(id),          # group-level GP
+    gp_ns(wave_s) +  zs(id),
   data = j_sub,
   sample_f = TRUE
 )
 
-summary(gp)
+summary(gp_2)
 
-print(gp)
+print(gp_2)
+save(gp_2, file="gp_2.RData")
+load("gp_2.RData")
 ```
 
 ```{r}
 # Define time sequence
-t <- seq(-1, 1, by = 0.1)
+t <- seq(-1.6, 2, by = 0.1)
 
 # Generate prediction dataset
-x_pred <- new_x(j_sub, t, group_by = NA, x = "wave_s")
-
+x_pred <- lgpr::new_x(j_sub, t, group_by = NA, x = "wave_s")
 ```
 
 ```{r}
 # Create function to wrangle the predictions to the correct format
 process_predictions <- function(predicted) {
-  print(predicted$h)
   # Extract and reshape predictions 
   x <- as.data.frame(predicted@x)
-  y <- as.data.frame(predicted@y_mean) %>%
+  y <- as.data.frame(predicted@h) %>%
     pivot_longer(cols = everything()) %>%
     dplyr::select(-name) %>%
     rename(y = value)
@@ -395,20 +387,29 @@ process_predictions <- function(predicted) {
   return(data)
 }
 
-# Apply function for predictions for shared effect (f = fixed effect) and person-specific effect (r = random effects)
-gp_pred_f <- process_predictions(pred(gp, x_pred, reduce = mean, verbose = FALSE))
-gp_pred_r <- process_predictions(pred(gp, reduce = mean, verbose = FALSE))
 
+# Apply function for predictions for shared effect (f = fixed effect) and person-specific effect (r = random effects)
+pred1 <-lgpr::pred(gp_2, x_pred,  verbose = FALSE)
+gp_pred_f <- process_predictions(pred1)
+pred2<- lgpr::pred(gp_2, verbose = FALSE)
+gp_pred_r <- process_predictions(pred2)
 ```
+#### Sort of works
+```{r}
+ggplot(gp_pred_f, aes(x = wave_s, y = y )) + 
+  geom_smooth(color = project_colors[2], size = 1) +  
+  geom_point(aes(y = y), color = project_colors[3], alpha = 0.7, size = 1.2)
+```
+
 
 ```{r}
 # Extract posterior samples from fit
-posterior_samples <- pred(gp)
+posterior_samples <- pred(gp_2)
 
 # Sort time points (months) for consistent plotting
-order <- order(wido$mnths)
-months <- wido$mnths[order]
-posterior_samples <- posterior_samples@f_comp$`gp_ns(mnths)`[, order]
+order <- order(j_sub$wave_s)
+waves <- j_sub$wave_s[order]
+posterior_samples <- posterior_samples@f_comp$`gp_ns(wave_s)`[, order]
 
 # Convert to tidy format for summarising
 df_draws <- as_tibble(posterior_samples)
@@ -419,17 +420,17 @@ df_draws <- df_draws %>%
   mutate(draw = row_number()) %>%
   pivot_longer(
     cols = -draw,
-    names_to = "month_index",
+    names_to = "wave_index",
     values_to = "value"
   ) %>%
   mutate(
-    month_index = as.integer(month_index),
-    month = months[month_index]
+    wave_index = as.integer(wave_index),
+    wave = waves[wave_index]
   )
 
 # Randomly select 1,000 posterior draws
 set.seed(123)  # for reproducibility
-draw_ids <- sample(unique(df_draws$draw), 1000)
+draw_ids <- sample(unique(df_draws$draw), 100)
 
 # Filter the data to keep only the selected draws
 df_draws_sampled <- df_draws %>%
@@ -437,13 +438,13 @@ df_draws_sampled <- df_draws %>%
 
 # Get original mean and SD of life satisfaction,
 # to denormalise predictions back to the original scale of life satisfaction
-mean_ls <- mean(wido$lifesatisfaction)
-sd_ls <- sd(wido$lifesatisfaction)
+mean_ls <- mean(j_data$cv_r1)
+sd_ls <- sd(j_data$cv_r1)
 
 
 # Compute 95% credible intervals per month
 summary_df <- df_draws_sampled %>%
-  group_by(month) %>%
+  group_by(wave) %>%
   summarise(
     lower_CI = quantile(value, 0.025),
     upper_CI = quantile(value, 0.975),
@@ -459,23 +460,68 @@ summary_df <- df_draws_sampled %>%
 set.seed(123)
 
 # Randomly sample 50 participants
-rsample_ids <- sample(unique(wido$id), 50)
+rsample_ids <- sample(unique(j_sub$id), 3)
 
 # Filter the data to include only the randomly selected participants
 gp_pred_r_rsample <- gp_pred_r %>%
   filter(id %in% rsample_ids)
 ```
-
+#### doesn't work for some reason
 ```{r}
-plot_base + 
-  geom_line(data = gp_pred_r_rsample, aes(mnths, y, group = id), color = "grey70", linewidth = 0.4) +
-  geom_ribbon(data = summary_df, aes(ymin = lower_CI, ymax = upper_CI, x = month),
+ggplot()+
+  geom_line(data = gp_pred_r_rsample, aes(waves, y, group = id), color = "grey70", linewidth = 0.4) +
+  geom_ribbon(data = summary_df, aes(ymin = lower_CI, ymax = upper_CI, x = wave),
               alpha = 0.2, fill = "firebrick4") +
-  geom_line(data = gp_pred_f, aes(x = mnths, y = y),  color = "firebrick4", linewidth = 1) +
+  geom_line(data = gp_pred_f, aes(x = waves, y = y),  color = "firebrick4", linewidth = 1) +
   ggtitle("Gaussian Process Regression") +
   theme(plot.title = element_text(size = 13, face = "bold"))
+```
 
-save(gp, file="gp.RData")
-load("gp.RData")
+```{r}
+plot_components(gp_2,pred = pred1, t_name = "wave_s")
+```
+
+```{r}
+plot_components(gp_2, pred = pred2,  t_name = "wave_s")
+```
+###################################
+```{r}
+
+# simulate data using the mgcv package
+dat <- mgcv::gamSim(1, n = 30, scale = 2)
+
+# fit a simple GP model
+fit1 <- brm(y ~ gp(x2), dat, chains = 2)
+summary(fit1)
+me1 <- conditional_effects(fit1, ndraws = 200, spaghetti = TRUE)
+plot(me1, ask = FALSE, points = TRUE)
+
+# fit a more complicated GP model
+fit2 <- brm(y ~ gp(x0) + x1 + gp(x2) + x3, dat, chains = 2)
+summary(fit2)
+me2 <- conditional_effects(fit2, ndraws = 200, spaghetti = TRUE)
+plot(me2, ask = FALSE, points = TRUE)
+
+# fit a multivariate GP model
+fit3 <- brm(y ~ gp(x1, x2), dat, chains = 2)
+summary(fit3)
+me3 <- conditional_effects(fit3, ndraws = 200, spaghetti = TRUE)
+plot(me3, ask = FALSE, points = TRUE)
+
+# compare model fit
+loo(fit1, fit2, fit3)
+
+# simulate data with a factor covariate
+dat2 <- mgcv::gamSim(4, n = 90, scale = 2)
+
+# fit separate gaussian processes for different levels of 'fac'
+fit4 <- brm(y ~ gp(x2, by = fac), dat2, chains = 2)
+summary(fit4)
+plot(conditional_effects(fit4), points = TRUE)
+
+save(fit1, file="gp_11.RData")
+save(fit2, file="gp_12.RData")
+save(fit3, file="gp_13.RData")
+save(fit4, file="gp_14.RData")
 ```
 
