@@ -366,6 +366,113 @@ gp <- lgp(
 
 summary(gp)
 
+print(gp)
+```
 
+```{r}
+# Define time sequence
+t <- seq(-1, 1, by = 0.1)
+
+# Generate prediction dataset
+x_pred <- new_x(j_sub, t, group_by = NA, x = "wave_s")
+
+```
+
+```{r}
+# Create function to wrangle the predictions to the correct format
+process_predictions <- function(predicted) {
+  print(predicted$h)
+  # Extract and reshape predictions 
+  x <- as.data.frame(predicted@x)
+  y <- as.data.frame(predicted@y_mean) %>%
+    pivot_longer(cols = everything()) %>%
+    dplyr::select(-name) %>%
+    rename(y = value)
+
+  # Combine 
+  data <- cbind(x, y)
+  
+  return(data)
+}
+
+# Apply function for predictions for shared effect (f = fixed effect) and person-specific effect (r = random effects)
+gp_pred_f <- process_predictions(pred(gp, x_pred, reduce = mean, verbose = FALSE))
+gp_pred_r <- process_predictions(pred(gp, reduce = mean, verbose = FALSE))
+
+```
+
+```{r}
+# Extract posterior samples from fit
+posterior_samples <- pred(gp)
+
+# Sort time points (months) for consistent plotting
+order <- order(wido$mnths)
+months <- wido$mnths[order]
+posterior_samples <- posterior_samples@f_comp$`gp_ns(mnths)`[, order]
+
+# Convert to tidy format for summarising
+df_draws <- as_tibble(posterior_samples)
+colnames(df_draws) <- as.character(seq_along(colnames(df_draws)))
+
+# Reshape to long format
+df_draws <- df_draws %>%
+  mutate(draw = row_number()) %>%
+  pivot_longer(
+    cols = -draw,
+    names_to = "month_index",
+    values_to = "value"
+  ) %>%
+  mutate(
+    month_index = as.integer(month_index),
+    month = months[month_index]
+  )
+
+# Randomly select 1,000 posterior draws
+set.seed(123)  # for reproducibility
+draw_ids <- sample(unique(df_draws$draw), 1000)
+
+# Filter the data to keep only the selected draws
+df_draws_sampled <- df_draws %>%
+  filter(draw %in% draw_ids)
+
+# Get original mean and SD of life satisfaction,
+# to denormalise predictions back to the original scale of life satisfaction
+mean_ls <- mean(wido$lifesatisfaction)
+sd_ls <- sd(wido$lifesatisfaction)
+
+
+# Compute 95% credible intervals per month
+summary_df <- df_draws_sampled %>%
+  group_by(month) %>%
+  summarise(
+    lower_CI = quantile(value, 0.025),
+    upper_CI = quantile(value, 0.975),
+    .groups = "drop"
+  ) %>%
+  mutate(lower_CI = lower_CI * sd_ls + mean_ls,
+         upper_CI = upper_CI * sd_ls + mean_ls
+  )
+```
+
+```{r}
+# For reproducibility
+set.seed(123)
+
+# Randomly sample 50 participants
+rsample_ids <- sample(unique(wido$id), 50)
+
+# Filter the data to include only the randomly selected participants
+gp_pred_r_rsample <- gp_pred_r %>%
+  filter(id %in% rsample_ids)
+```
+
+```{r}
+plot_base + 
+  geom_line(data = gp_pred_r_rsample, aes(mnths, y, group = id), color = "grey70", linewidth = 0.4) +
+  geom_ribbon(data = summary_df, aes(ymin = lower_CI, ymax = upper_CI, x = month),
+              alpha = 0.2, fill = "firebrick4") +
+  geom_line(data = gp_pred_f, aes(x = mnths, y = y),  color = "firebrick4", linewidth = 1) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
 ```
 
