@@ -474,5 +474,8 @@ plot_base +
   geom_line(data = gp_pred_f, aes(x = mnths, y = y),  color = "firebrick4", linewidth = 1) +
   ggtitle("Gaussian Process Regression") +
   theme(plot.title = element_text(size = 13, face = "bold"))
+
+save(gp, file="gp.RData")
+load("gp.RData")
 ```
 
