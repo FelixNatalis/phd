@@ -1,0 +1,741 @@
+---
+title: "gp_analysis"
+output: html_document
+date: "2026-02-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+########## Analysis for simulating GP with an artificial example
+```{r}
+#install.packages("tidyverse")
+#install.packages("lgpr")
+#install.packages("brms")
+#install.packages("rstan")
+#install.packages("rstanarm")
+#install.packages("remotes")
+#install.packages("tidybayes")
+#install.packages("bridgesampling")
+#install.packages("shinystan")
+#install.packages("mgcv")
+#remotes::install_github("michael-franke/aida-package")
+#remotes::install_github("michael-franke/faintr")
+#remotes::install_github("CogSciPrag/cspplot")
+
+#install.packages("ggplot2")
+#install.packages("gridExtra")
+
+library(tidyverse)
+library(dplyr)
+library(lgpr)
+library(brms)
+library(rstan)
+library(rstanarm)
+library(remotes)
+library(tidybayes)
+library(bridgesampling)
+library(shinystan)
+library(mgcv)
+library(aida)
+library(faintr)
+library(cspplot)
+library(rstan)
+library(plyr)
+library(reshape2)
+library(ggplot2)
+library(gridExtra)
+
+```
+```{r}
+# these options help Stan run faster
+options(mc.cores = parallel::detectCores())
+
+# use the CSP-theme for plotting
+theme_set(theme_csp())
+
+# global color scheme from CSP
+project_colors = cspplot::list_colors() |> pull(hex)
+# names(project_colors) <- cspplot::list_colors() |> pull(name)
+
+# setting theme colors globally
+scale_colour_discrete <- function(...) {
+  scale_colour_manual(..., values = project_colors)
+}
+scale_fill_discrete <- function(...) {
+   scale_fill_manual(..., values = project_colors)
+}
+```
+
+```{r}
+get_GP_simulation <- 
+  function(x = seq(0,10, by = 0.1), 
+           Intercept = 0, 
+           slope = 1, 
+           sigma = 1, 
+           sigma_f=0.5, 
+           lambda=100, 
+           seed = NULL) {
+    
+    if (! is.null(seed)){
+      set.seed(seed)
+    }
+    
+    # number of points to generate prediction for
+    N <- length(x)
+    
+    # linear predictor (vanilla LM)
+    eta = Intercept + slope * x
+    
+    # kernel function (here: radial basis function kernel)
+    get_covmatrix <- function(x, sigma_f, lambda) {
+      K = matrix(0, nrow=N, ncol=N)
+      for (i in 1:N) {
+        for (j in 1:N) {
+          K[i,j] = sigma_f^2 * exp(sqrt((i-j)^2) / (-2 *lambda))
+        }
+      }
+      return(K)
+    }
+    
+    # covariance matrix
+    K <- get_covmatrix(x, sigma_f, lambda)
+    
+    # Gaussian process wiggles
+    epsilon_gp <- mvtnorm::rmvnorm(
+      n     = 1, 
+      mean  = rep(0, N),
+      sigma = K)[1,]
+    
+    # central tendency
+    mu <- epsilon_gp + eta
+    
+    # data prediction
+    y <- rnorm(N, mu, sigma)
+      
+    tibble(x, eta, mu, y) 
+  }
+
+plot_GP_simulation <- function(GP_simulation) {
+  GP_simulation |> 
+    ggplot(aes(x = x, y = eta )) + 
+    geom_line(color = project_colors[1], size = 1.25) +
+    geom_line(aes(y = mu), color = project_colors[2], size = 1.25) +
+    geom_point(aes(y = y), color = project_colors[3], alpha = 0.7, size = 1.2)
+}
+```
+
+```{r}
+get_GP_simulation(
+  x = seq(-1,1, length.out = 500), 
+  Intercept = 0, 
+  slope = 0.3, 
+  sigma_f = 0.05, 
+  lambda  = 20, 
+  sigma = 0.05) |> 
+  plot_GP_simulation()
+```
+
+```{r}
+GP_simulation <- get_GP_simulation(
+  x = seq(-1,1, length.out = 100), 
+  Intercept = 0, 
+  slope = 1, 
+  sigma_f = 0.5, 
+  lambda  = 2, 
+  sigma = 0.0001,
+  seed = 1996)
+
+plot_GP_simulation(GP_simulation)
+```
+
+```{r}
+# results: hide
+fit_GPR <- 
+  brms::brm(
+    formula = y ~ gp(x) + x,
+    data    = GP_simulation,
+    iter    = 2000
+  )
+```
+
+```{r}
+summary(fit_GPR)
+```
+
+```{r}
+conditional_effects(fit_GPR)
+```
+
+########### Artificial data fits fine
+############ Data of WHR for Benevolence in Netherlands
+```{r}
+x <- c(2007, 2008, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024)
+y <- c(74.9, 77.1, 75.3, 74.0, 69.2, 70.8, 73.5, 66.6, 64.5, 65.8, 57.1, 62.3, 55.8, 68.1, 64.1, 64.0, 60.7)
+
+data<- data.frame(x, y)
+
+ggplot(data, aes(x = x, y = y )) + 
+    geom_line(color = project_colors[1], size = 1.25) +
+    geom_point(aes(y = y), color = project_colors[3], alpha = 0.7, size = 1.2)
+```
+
+```{r}
+data$x_s <- (scale(data$x))[,1]
+
+fit_GPR_2 <- brms::brm(
+  y ~ gp(x_s, kappa = 1e-8),
+  data = data,
+  iter = 4000
+)
+
+
+summary(fit_GPR_2)
+```
+
+########### 17 observations are not enough
+
+```{r}
+newdata <- data.frame(
+  x_s = seq(min(data$x_s), max(data$x_s), length.out = 200)
+)
+
+pred <- fitted(
+  fit_GPR_2,
+  newdata = newdata,
+  re_formula = NA
+)
+
+```
+
+############################################### Analysis of Japan panel on covid, 30 waves
+
+```{r}
+panel_japan <- read.csv("data.csv", stringsAsFactors = FALSE)
+
+j_data<- panel_japan[, c("cw_ID", "cv_r1", "wave", "sleep_x", "only_jpn")]
+
+j_data <- j_data %>%
+  mutate(
+    wave_s   = as.numeric(scale(wave)),
+    #id       = as.integer(factor(cw_ID)),
+    id       = as.factor(factor(cw_ID)),
+    cv_r1    = as.numeric(scale(cv_r1)),
+    sleep_x  = as.numeric(scale(sleep_x)),
+    only_jpn = as.numeric(scale(as.numeric(only_jpn))
+  ))
+
+j_data<- j_data[, c("id", "cv_r1", "wave_s")]
+
+head(j_data)
+```
+
+# BRMS analysis on just one person - 30 observations, does not work
+```{r}
+j_data_1 <- subset(j_data, id == "8491")
+
+ggplot(j_data_1, aes(x = wave_s, y = cv_r1 )) + 
+    geom_line(color = project_colors[1], size = 1.25) +
+  geom_smooth(color = project_colors[2], size = 1) +  
+  geom_point(aes(y = cv_r1), color = project_colors[3], alpha = 0.7, size = 1.2)
+
+ggplot(j_data_1, aes(x = wave_s, y = sleep_x )) + 
+    geom_line(color = project_colors[1], size = 1.25) +
+    geom_smooth(color = project_colors[2], size = 1) + 
+    geom_point(aes(y = sleep_x), color = project_colors[3], alpha = 0.7, size = 1.2)
+
+ggplot(j_data_1, aes(x = wave_s, y = only_jpn )) + 
+    geom_smooth(color = project_colors[2], size = 1) +
+    geom_line(color = project_colors[1], size = 1.25) +
+  geom_point(aes(y = only_jpn), color = project_colors[3], alpha = 0.7, size = 1.2)
+```
+##### just one person, 17 obs - not working
+```{r}
+fit_GPR_3 <- brms::brm(
+  cv_r1 ~ gp(wave_s, kappa = 1e-2),
+  data = j_data_1,
+  iter = 4000
+)
+
+summary(fit_GPR_3)
+
+newdata <- data.frame(
+  wave_s = seq(min(j_data_1$wave_s), max(j_data_1$wave_s), length.out = 200)
+)
+
+pred <- fitted(
+  fit_GPR_3,
+  newdata = newdata,
+  re_formula = NA
+)
+```
+############################### Analysis with lgpr to study several people
+```{r}
+# For reproducibility
+set.seed(123)
+
+ggplot() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  labs(x = "wave", y = "Dread") +
+  theme(legend.position = "none") +
+  theme(aspect.ratio=0.9) +
+geom_smooth(data = j_data, aes(x=wave_s, y=cv_r1)) +
+  ggtitle("Average dreadfulness levels") +
+  theme(plot.title = element_text(size = 13, face = "bold")) 
+```
+
+```{r}
+# For reproducibility
+set.seed(123)
+
+# Define mean and SD of the log-normal distribution
+mean_priordistribution_lengthscale <- 0
+sd_priordistribution_lengthscale <- 1
+
+# Define warping function
+warpfun <- function(time,warpingparameter){
+  2 / (1 + exp( - warpingparameter * time)) - 1
+}
+
+# Define kernel with warping function
+kernelGP <- function(X1, X2, lengthscale, alpha, warpingparameter, fun=function(x,w){x}){
+  
+  X1mat <- matrix(rep(fun(X1,warpingparameter),length(X2)),nrow=length(X1))
+  X2mat <- matrix(rep(fun(X2,warpingparameter),length(X1)),nrow=length(X1),byrow=TRUE)
+  
+  alpha**2 * exp(- .5 * (X1mat - X2mat) * (X1mat - X2mat) / lengthscale**2 )
+  
+}
+
+n <- 100 
+X <- seq(-100, 100, length=n) 
+mu = rep(0,length(X))
+
+# Set up a 4x4 plotting panel
+par(mfrow = c(4, 4), mar = c(2, 2, 2, 2))
+
+# Loop to generate 16 plots
+for (i in 1:16) {
+
+# Lengthscale parameter
+lengthscale1 <- dlnorm(1, meanlog = mean_priordistribution_lengthscale, sdlog = sd_priordistribution_lengthscale)
+
+# Magnitude parameter (potentially modify prior distribution here!)
+alpha1 <- dlnorm(1, meanlog = 0, sdlog = 1)
+
+# Warping parameter (potentially modify prior distribution here!)
+warpingparameter <- dlnorm(1, meanlog=-0.7,sdlog=0.9)
+covm = kernelGP(X, X, lengthscale = lengthscale1, alpha = alpha1, warpingparameter = warpingparameter, fun = warpfun)
+
+# Intercept
+beta0 <- 0
+
+  # Draw a line from the GP
+  draw_f <- mvtnorm::rmvnorm(1, mean = mu, sigma = covm)
+  
+  # Plot the line
+  plot(X, beta0 + draw_f, type = "l", col = "grey", lwd = 2,
+       ylim = c(beta0 - 2 * alpha1, beta0 + 2 * alpha1),
+       ylab = "y", xlab = "x", main = paste("Plot", i))
+}
+
+prior <- list(
+  alpha = log_normal(0, 1), 
+  ell = log_normal(0, 1),
+  wrp = log_normal(-0.7, 0.9)
+)
+```
+
+
+```{r}
+j_sub <- subset(j_data, id %in% c("42040", "8491", "15569", "94338"))
+
+#gp <- lgp(
+#  cv_r1 ~
+#    gp_ns(wave_s) +  # population-level GP
+#    gp_ns(wave_s)*zs(id),# group-level GP
+#  data = j_sub,
+#  sample_f = TRUE
+#)
+
+gp_2 <- lgp(
+  cv_r1 ~
+    gp_ns(wave_s) +  zs(id),
+  data = j_sub,
+  sample_f = TRUE
+)
+
+summary(gp_2)
+
+print(gp_2)
+save(gp_2, file="gp_2.RData")
+load("gp_2.RData")
+```
+
+```{r}
+# Define time sequence
+t <- seq(-1.6, 2, by = 0.1)
+
+# Generate prediction dataset
+x_pred <- lgpr::new_x(j_sub, t, group_by = NA, x = "wave_s")
+```
+
+```{r}
+# Create function to wrangle the predictions to the correct format
+process_predictions <- function(predicted) {
+  # Extract and reshape predictions 
+  x <- as.data.frame(predicted@x)
+  y <- as.data.frame(predicted@h) %>%
+    pivot_longer(cols = everything()) %>%
+    dplyr::select(-name) %>%
+    rename(y = value)
+
+  # Combine 
+  data <- cbind(x, y)
+  
+  return(data)
+}
+
+
+# Apply function for predictions for shared effect (f = fixed effect) and person-specific effect (r = random effects)
+pred1 <-lgpr::pred(gp_2, x_pred,  verbose = FALSE)
+gp_pred_f <- process_predictions(pred1)
+pred2<- lgpr::pred(gp_2, verbose = FALSE)
+gp_pred_r <- process_predictions(pred2)
+```
+#### Sort of works
+```{r}
+ggplot(gp_pred_f, aes(x = wave_s, y = y )) + 
+  geom_smooth(color = project_colors[2], size = 1) +  
+  geom_point(aes(y = y), color = project_colors[3], alpha = 0.7, size = 1.2)
+```
+
+
+```{r}
+# Extract posterior samples from fit
+posterior_samples <- pred(gp_2)
+
+# Sort time points (months) for consistent plotting
+order <- order(j_sub$wave_s)
+waves <- j_sub$wave_s[order]
+posterior_samples <- posterior_samples@f_comp$`gp_ns(wave_s)`[, order]
+
+# Convert to tidy format for summarising
+df_draws <- as_tibble(posterior_samples)
+colnames(df_draws) <- as.character(seq_along(colnames(df_draws)))
+
+# Reshape to long format
+df_draws <- df_draws %>%
+  mutate(draw = row_number()) %>%
+  pivot_longer(
+    cols = -draw,
+    names_to = "wave_index",
+    values_to = "value"
+  ) %>%
+  mutate(
+    wave_index = as.integer(wave_index),
+    wave = waves[wave_index]
+  )
+
+# Randomly select 1,000 posterior draws
+set.seed(123)  # for reproducibility
+draw_ids <- sample(unique(df_draws$draw), 100)
+
+# Filter the data to keep only the selected draws
+df_draws_sampled <- df_draws %>%
+  filter(draw %in% draw_ids)
+
+# Get original mean and SD of life satisfaction,
+# to denormalise predictions back to the original scale of life satisfaction
+mean_ls <- mean(j_data$cv_r1)
+sd_ls <- sd(j_data$cv_r1)
+
+
+# Compute 95% credible intervals per month
+summary_df <- df_draws_sampled %>%
+  group_by(wave) %>%
+  summarise(
+    lower_CI = quantile(value, 0.025),
+    upper_CI = quantile(value, 0.975),
+    .groups = "drop"
+  ) %>%
+  mutate(lower_CI = lower_CI * sd_ls + mean_ls,
+         upper_CI = upper_CI * sd_ls + mean_ls
+  )
+```
+
+```{r}
+# For reproducibility
+set.seed(123)
+
+# Randomly sample 50 participants
+rsample_ids <- sample(unique(j_sub$id), 3)
+
+# Filter the data to include only the randomly selected participants
+gp_pred_r_rsample <- gp_pred_r %>%
+  filter(id %in% rsample_ids)
+```
+#### doesn't work for some reason
+```{r}
+ggplot()+
+  geom_line(data = gp_pred_r_rsample, aes(waves, y, group = id), color = "grey70", linewidth = 0.4) +
+  geom_ribbon(data = summary_df, aes(ymin = lower_CI, ymax = upper_CI, x = wave),
+              alpha = 0.2, fill = "firebrick4") +
+  geom_line(data = gp_pred_f, aes(x = waves, y = y),  color = "firebrick4", linewidth = 1) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+```
+
+```{r}
+plot_components(gp_2,pred = pred1, t_name = "wave_s")
+```
+
+```{r}
+plot_components(gp_2, pred = pred2,  t_name = "wave_s")
+```
+###################################
+```{r}
+
+# simulate data using the mgcv package
+dat <- mgcv::gamSim(1, n = 30, scale = 2)
+
+# fit a simple GP model
+fit1 <- brm(y ~ gp(x2), dat, chains = 2)
+summary(fit1)
+me1 <- conditional_effects(fit1, ndraws = 200, spaghetti = TRUE)
+plot(me1, ask = FALSE, points = TRUE)
+
+# fit a more complicated GP model
+fit2 <- brm(y ~ gp(x0) + x1 + gp(x2) + x3, dat, chains = 2)
+summary(fit2)
+me2 <- conditional_effects(fit2, ndraws = 200, spaghetti = TRUE)
+plot(me2, ask = FALSE, points = TRUE)
+
+# fit a multivariate GP model
+fit3 <- brm(y ~ gp(x1, x2), dat, chains = 2)
+summary(fit3)
+me3 <- conditional_effects(fit3, ndraws = 200, spaghetti = TRUE)
+plot(me3, ask = FALSE, points = TRUE)
+
+# compare model fit
+loo(fit1, fit2, fit3)
+
+# simulate data with a factor covariate
+dat2 <- mgcv::gamSim(4, n = 90, scale = 2)
+
+# fit separate gaussian processes for different levels of 'fac'
+fit4 <- brm(y ~ gp(x2, by = fac), dat2, chains = 2)
+summary(fit4)
+plot(conditional_effects(fit4), points = TRUE)
+
+save(fit1, file="gp_11.RData")
+save(fit2, file="gp_12.RData")
+save(fit3, file="gp_13.RData")
+save(fit4, file="gp_14.RData")
+
+load("gp_11.RData")
+load("gp_12.RData")
+load("gp_13.RData")
+load("gp_14.RData")
+```
+
+################################################demo from https://gist.github.com/jkeirstead/6271854
+
+```{r}
+## 1. Simulate a process with no data
+## The very small sigma_sq value is necessary to avoid an error.  Don't set it to zero.
+x <- seq(-5, 5, 0.2)
+n <- length(x)
+fit <- stan(file="gp-sim.stan", data=list(x=x, N=n, eta_sq=1, rho_sq=0.5, sigma_sq=0.0001),
+            iter=200, chains=3)
+sims <- extract(fit, permuted=TRUE)
+
+## Rearrange the data and plot it
+data <- adply(sims$y, 2)
+tmp <- melt(data)
+names(tmp) <- c("xid", "group", "y")
+tmp <- mutate(tmp, x=x[xid])
+fig2a <- ggplot(tmp, aes(x=x, y=y)) +
+  geom_line(aes(group=group), colour="#999999", alpha=0.3) +
+  theme_bw()
+```
+```{r}
+## 2. Simulate with a few noise-free data points.
+## Again pretend the noise is almost zero, but not quite.
+x1 <- c(-4, -3, -1, 0, 2)
+y1 <- c(-2, 0, 1, 2, -1)
+            
+## Parameter value fixed in given example
+fit <- stan(file="gp-predict.stan", data=list(x1=x1, y1=y1, N1=length(x1), 
+                                      x2=x, N2=length(x), eta_sq=1, rho_sq=0.5, sigma_sq=0.0001),
+            iter=200, chains=3)
+sims <- extract(fit, permuted=TRUE)
+
+## Rearrange the data and plot it
+data <- adply(sims$y, 2)
+tmp <- melt(data)
+names(tmp) <- c("xid", "group", "y")
+tmp <- mutate(tmp, x=x[xid])
+fig2b <- ggplot(tmp, aes(x=x, y=y)) +
+  geom_line(aes(group=group), colour="#999999", alpha=0.3) +
+  theme_bw() +
+  geom_point(data=data.frame(x=x1, y=y1))
+
+```
+```{r}
+
+## 3.  Adding more noise is easy.  Just change sigma_sq
+sigma.n <- 0.1
+fit <- stan(file="gp-predict.stan", data=list(x1=x1, y1=y1, N1=length(x1), 
+                                      x2=x, N2=length(x), eta_sq=1, rho_sq=1, sigma_sq=sigma.n^2),
+            iter=200, chains=3)
+sims <- extract(fit, permuted=TRUE)
+
+## Rearrange the data and plot
+data <- adply(sims$y, 2)
+tmp <- melt(data)
+names(tmp) <- c("xid", "group", "y")
+tmp <- mutate(tmp, x=x[xid])
+fig2c <- ggplot(tmp, aes(x=x, y=y)) +
+  geom_line(aes(group=group), colour="#999999", alpha=0.3) +
+  theme_bw() +
+  geom_point(data=data.frame(x=x1, y=y1)) +
+  geom_errorbar(data=data.frame(x=x1, y=y1), aes(x=x,y=NULL,ymin=y-2*sigma.n, ymax=y+2*sigma.n), width=0.2) 
+
+## Save plots for the web
+w <- 6
+h <- 4
+ggsave("fig2a-rstan.png", fig2a, width=w, height=h, dpi=150)
+ggsave("fig2b-rstan.png", fig2b, width=w, height=h, dpi=150)
+ggsave("fig2c-rstan.png", fig2c, width=w, height=h, dpi=150)
+grid.arrange(fig2a, fig2b, fig2c, ncol = 3)
+```
+
+####################################### Analysis from https://github.com/MaggieLieu/STAN_tutorials/tree/master/Gaussian_processes_I
+
+```{r}
+N=100
+
+data = list(
+  N = N,
+  x = seq(-10, 10, length.out=N), #equally spaced points
+  alpha = 1,
+  rho = 1
+)
+
+ndraws = 50 # number of draws
+fit = stan(file='sim_gp.stan', data=data, algorithm ='Fixed_param',warmup = 0, chains = 1, iter=ndraws)
+params = extract(fit)
+xr=c(-10,10)
+yr=c(-5,5)
+plot(xr, yr, ty='n')
+for(i in 1:ndraws){
+  lines(data$x, params$f[i,], pch=20, col=rgb(0,0.55,0.5, 0.2), cex=0.5)
+}
+points(data$x, params$f[ndraws,], pch=20, col='black', cex=1)
+lines(data$x, colMeans(params$f),lwd=3)
+```
+
+```{r}
+yconf = sapply(1:N, function(x) quantile(params$f[,x], probs=c(0.003,0.05,0.32,0.68,0.95,0.997)))
+
+plot(xr,yr, ty='n', xlab='t', ylab='y')
+for(i in 1:3){
+  polygon(x=c(data$x, rev(data$x)), y=c(yconf[i,], rev(yconf[i+3,])), border=NA, col=rgb(0,0,0,0.1))
+}
+lines(data$x, colMeans(params$f),lwd=3)
+```
+
+```{r}
+lcdata = read.csv('kplr003632418-2009131105131_llc.csv')
+plot(lcdata$TIME, lcdata$SAP_FLUX, pch=20, xlab='Time [days]', ylab='Flux [e-/s]', cex=0.5)
+bad = which(is.na(lcdata$SAP_FLUX)) #remove missing data
+x = lcdata$TIME[-bad] 
+y = (lcdata$SAP_FLUX[-bad] - mean(lcdata$SAP_FLUX[-bad]))/sd(lcdata$SAP_FLUX[-bad]) #Normalise flux to have mean 0 and sd 1
+plot(x,y, pch=20, cex=0.5)
+data = list(
+  N = length(x),
+  x = x,
+  y = y
+)
+fit = stan(file='method2.stan', data=data,chains = 1, iter=2000)
+params = extract(fit)
+pairs(fit)
+mean(params$rho)
+mean(params$alpha)
+mean(params$sigma)
+```
+
+```{r}
+N =500
+gen_data = list(
+  N = N,
+  x = seq(120, 132, length.out=N), #equally spaced points
+  alpha = mean(params$alpha),
+  rho = mean(params$rho), 
+  sigma = mean(params$sigma)
+)
+
+ndraws = 50 # number of draws
+gen_sam = stan(file = 'sim_gp.stan', data=gen_data, algorithm ='Fixed_param',warmup = 0, chains = 1, iter=ndraws)
+gen_params = extract(gen_sam)
+xr = c(120,132)
+yr = c(-4,4)
+plot(xr, yr, ty='n')
+for(i in 1:ndraws){
+  lines(gen_data$x, gen_params$f[i,], pch=20, col=rgb(0,0.55,0.5, 0.2))
+}
+points(data$x, data$y, pch=20, col='orange', cex=0.5)
+legend('topright', y = c('predicted','data'), col = c(rgb(0,0.55,0.5, 0.2),'orange'), bty='n', pch=c(NA,20), lty=c(1,NA))
+```
+
+```{r}
+N_predict = 100
+x_predict = seq(range(data$x)[1], 132, length.out=N_predict)
+N_obs = 200
+Obs = sort(sample(1:length(x), N_obs))
+pred_data <- list(N1=N_obs, x1=x[Obs], y1=y[Obs], N2=N_predict, x2=x_predict)
+
+pred_fit = stan(file='method1.stan', data =pred_data, iter=2000, chains=1)
+pred_params = extract(pred_fit)
+yr = c(-2,2)
+xr = c(120, 132)
+plot(xr, yr, ty='n')
+for( i in 1:100){
+  lines(x_predict, pred_params$f[i,(N_obs+1):(N_obs+N_predict)], col=rgb(0,0,0,0.1))
+}
+points(data$x, data$y, pch=20, col='orange', cex=0.3)
+```
+
+```{r}
+N_predict = 100
+x_predict = seq(range(x)[1], 132, length.out=N_predict)
+N_obs = 3
+Obs = sort(sample(1:length(x), N_obs))
+pred_data <- list(rho=mean(params$rho),alpha=mean(params$alpha), sigma=mean(params$sigma), N=N_obs, x=x[Obs], y=y[Obs], N_predict=N_predict, x_predict=x_predict)
+
+pred_opt_fit <- stan(file='predict_gauss.stan', data=pred_data, iter=1000, warmup=0,
+                     chains=1, algorithm="Fixed_param")
+pred_params = extract(pred_opt_fit)
+yr = c(-2,2)
+xr = c(120, 132)
+plot(xr, yr, ty='n')
+for( i in 1:100){
+  lines(x_predict, pred_params$f_predict[i,], col=rgb(0,0,0,0.1))
+}
+points(x, y, pch=20, col='orange', cex=0.3)
+points(pred_data$x, pred_data$y, pch=20, col='orange', cex=2)
+points(pred_data$x, pred_data$y, cex=2)
+```
+
+```{r}
+yconf = sapply(1:N_predict, function(x) quantile(pred_params$f[,x], probs=c(0.003,0.05,0.32,0.68,0.95,0.997)))
+
+plot(xr,yr, ty='n', xlab='t', ylab='y')
+for(i in 1:3){
+  polygon(x=c(x_predict, rev(x_predict)), y=c(yconf[i,], rev(yconf[i+3,])), border=NA, col=rgb(0,0,0,0.1))
+}
+lines(x_predict, colMeans(pred_params$f),lwd=3)
+```
+
