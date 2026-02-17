@@ -1,39 +1,80 @@
+# imports
 library(shiny)
 library(ggplot2)
 library(VaRES)
 library(digest)
 library(statmod)
+library(hash)
 
+# defaults parameters for GP prior predictive draws
 n_functions = 10
-xmax = 10
-npoints = 200
+x_min = -10
+x_max = 10
+n_points = 200
+epsilon = 1e-6
 
-# Kernel
-k_se <- function(x1, x2, lambda, sigma_2) {
+# Kernels
+# kernel_combinations = hash(
+#           "Changepoint" = 5,
+#           "Lin + SE" = 6,
+#           "Lin * SE" = 7,
+#           "Per + SE" = 8,
+#           "Per * SE" = 9
+# )
+
+# SE kernel function
+squared_exponential_kernel <- function(x1, x2, lambda, sigma_2) {
   outer(x1, x2, function(a, b)
     (sigma_2 * exp(-(a - b)^2 / (2 * lambda^2)))
   )
 }
 
-simulate_gp <- function(x, lambda, sigma_k, sigma_n = 1e-3, mean_fun = function(x) 0) {
+# Linear kernel function
+linear_kernel <- function(x1, x2, lambda, sigma_2) {
+  outer(x1, x2, function(a, b)
+    (sigma_2 * a * b)
+  )
+}
+
+kernels <- hash(
+  "Squared Exponential" = 2#squared_exponential_kernel
+  #,"Matérn" = 2, 
+  ,"Linear" = 1#linear_kernel
+  #,"Periodic" = 4
+  ) 
+
+kernel <- squared_exponential_kernel#linear_kernel
+
+# Drawing GP
+simulate_gp <- function(x, lambda, sigma_k, sigma_noise = 1e-3, mean_fun = function(x) 0) {
   
-  K <- k_se(x, x, lambda, sigma_k)
-  L <- chol(K + 1e-6 * diag(length(x)))
+  K <- kernel(x, x, lambda, sigma_k)
+  L <- chol(K + epsilon * diag(length(x)))
   
   m <- mean_fun(x)
   
   f <- m + t(L) %*% rnorm(length(x))
   
   # noise
-  eps <- sigma_n * rnorm(length(x))
+  eps <- sigma_noise * rnorm(length(x))
   
   drop(f + eps)
 }
 
+## UI
 
 ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
+      tags$h4("Kernel"),
+      selectInput("kernel_label", "Choose a kernel:",
+                  list(`Simple kernels` = keys(kernels)
+                       #, `Kernel combinations` = keys(kernel_combinations)
+                       )
+      ),
+      #textOutput("kernel_choice"),
+      tags$hr(),
+      
       tags$h4("Hyperparameters for λ"),
       sliderInput("ig_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
       sliderInput("ig_beta", "Inverse-Gamma beta:", 1, 15, 1),
@@ -51,12 +92,11 @@ ui <- fluidPage(
       actionButton("draw_sigma_2", "Draw New Sigma^2"),
       tags$hr(),
 
-      
       #tags$h4("Other parameters"),
       #sliderInput("sigma_n", "Noise amplitude:", 0, 15, 1),
       sliderInput("nfunc", "Number of Functions:", 1, n_functions, 3),
-      #sliderInput("npoints", "Number of X Points:", 20, 400, 200),
-      #sliderInput("xmax", "X Range:", 2, 20, 10),
+      #sliderInput("n_points", "Number of X Points:", 20, 400, 200),
+      #sliderInput("x_max", "X Range:", 2, 20, 10),
       actionButton("draw_gp", "Draw GP")
     ),
     
@@ -77,6 +117,20 @@ ui <- fluidPage(
 )
 
 server <- function(input, output) {
+  
+  #output$kernel_choice <- renderText({
+  #  paste(print(kernels[[input$kernel_label]]))
+  #})
+  
+    
+  #kernel <- eventReactive(input$kernel_label, {
+  #  chosen <- kernels[[input$kernel_label]]
+    
+  #  return(chosen)
+  #})
+  
+  #output$kernel_choice <-  renderText({paste("AAAAAAAAAAAAAAAAAAAAAAAAAAAA44", kernel)})
+  
   
   #Inv-Gamma
   lambda_draw <- eventReactive(input$draw_lambda, { 
@@ -121,7 +175,7 @@ server <- function(input, output) {
   gp_funcs <- reactive({
     req(lambda_draw(), sigma_2_draw())
     
-    x_orig <- seq(0, 10, length.out = 200)
+    x_orig <- seq(x_min, x_max, length.out = n_points)
     funcs <- replicate(input$nfunc,
                        simulate_gp(x_orig, lambda_draw(), sigma_2_draw()))#, mean_fun = function(x) 10 + 5 * x_orig) ))
     
@@ -151,7 +205,7 @@ server <- function(input, output) {
       return(old_pool)
     }
     
-    x_orig <- seq(0, 10, length.out = 200)
+    x_orig <- seq(x_min, x_max, length.out = n_points)
     funcs <- replicate(
       n_functions,
       simulate_gp(x_orig, lam, sig)#, mean_fun = function(x) 10 + 5 * x_orig)
@@ -173,7 +227,7 @@ server <- function(input, output) {
     idx <- 1:input$nfunc
     idx <- idx[idx <= 100]   # safety
     
-    x_new <- seq(0, xmax, length.out = npoints)#input$xmax, length.out = input$npoints
+    x_new <- seq(x_min, x_max, length.out = n_points)#input$x_max, length.out = input$n_points
     
     funcs_interp <- apply(gp_pool()$funcs[, idx, drop=FALSE], 2, function(f) {
       approx(gp_pool()$x_orig, f, xout = x_new)$y
@@ -190,7 +244,7 @@ server <- function(input, output) {
   
   ### plots
   
-  # Inverse-Gamma prior for lambda
+  # Inverse-Gamma prior for lambda plot
   output$plot_ig <- renderPlot({
     req(lambda_draw())
     
@@ -216,7 +270,7 @@ server <- function(input, output) {
       theme_minimal(base_size=14)
   })
   
-  # Inverse-Gaussian prior for lambda
+  # Inverse-Gaussian prior for lambda plot
   #output$plot_ig_gauss <- renderPlot({
   #  req(lambda_draw_gauss())
   #  
@@ -240,7 +294,7 @@ server <- function(input, output) {
   #    theme_minimal(base_size=14)
   #})
   
-  # Half-t prior for sigma
+  # Half-t prior for sigma plot
   output$plot_ht <- renderPlot({
     req(sigma_2_draw())
     
@@ -268,25 +322,25 @@ server <- function(input, output) {
       theme_minimal(base_size=14)
   })
   
-  
+ # Kernel based on distance plot
   output$kernelPlot <- renderPlot({
     req(lambda_draw(), sigma_2_draw())
     
-    x <- seq(-3, 3, length.out = 300)
+    dist <- seq(-3, 3, length.out = 300)
+    x_o <- rep(0, length(dist))
     lambda <- lambda_draw()
     sigma_2  <- sigma_2_draw()
     
-    k <- sigma_2 * exp(-x^2 / (2 * lambda^2))
+    k <- kernel(dist, x_o, lambda, sigma_2)
     
-    ggplot(data.frame(x=x, k=k), aes(x,k)) +
+    ggplot(data.frame(dist=dist, k=k), aes(dist,k)) +
       geom_line(color="purple", linewidth=1.2) +
       labs(title="Squared-Exponential Kernel", x="Distance", y="k(x)") +
       theme_minimal(base_size=14)
   })
   
   
-  
-  # gp
+  # GP prior draws plot
   output$gpPlot <- renderPlot({
     req(gp_data())
     

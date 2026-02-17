@@ -1,0 +1,104 @@
+---
+title: "stuff for app"
+output: html_document
+date: "2026-02-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(magrittr)
+set.seed(4444)
+ #' RBF Kernel
+  #'
+  #' Isotropic RBF kernel function generalised to two sets of n and m observations
+  #' of d features.
+  #'
+  #' @param X1 matrix of dimensions (n, d). Vectors are coerced to (1, d).
+  #' @param X2 matrix of dimensions (m, d). Vectors are coerced to (1, d).
+  #' @param sigma scale parameter, scalar
+  #' @param l length scale, scalar
+  #'
+  #' @return kernel matrix of dimensions (n, m)
+  rbf_kernel <- function(X1, X2, sigma = 1.0, l = 1.0) {
+    if (is.null(dim(X1))) dim(X1) <- c(1, length(X1))
+    if (is.null(dim(X2))) dim(X2) <- c(1, length(X2))
+    sqdist <- (- 2*(X1 %*% t(X2))) %>%
+      add(rowSums(X1**2, dims = 1)) %>%
+      sweep(2, rowSums(X2**2, dims = 1), `+`)
+    sigma**2 * exp(-0.5 / l**2 * sqdist)
+  }
+  
+```
+
+
+```{r}
+
+```
+
+```{r}
+
+  plot_kernel_value <- function(kernel, ...) {
+    tibble::tibble(
+      X1 = seq(0, 5, by = 0.05),
+      X2 = rep(0, length(X1)),
+      kv = purrr::map2_dbl(X1, X2, kernel, ...)
+    ) %>%
+      ggplot(aes(x = X1, y = kv)) +
+      geom_line() +
+      labs(x = "Euclidean distance", y = "kernel value") +
+      theme_minimal()
+  }
+  
+```
+
+```{r}
+plot_kernel_value(rbf_kernel)
+```
+```{r}
+squared_exponential_kernel <- function(x1, x2, lambda, sigma_2) {
+  outer(x1, x2, function(a, b)
+    (sigma_2 * exp(-(a - b)^2 / (2 * lambda^2)))
+  )
+}
+```
+
+
+```{r}
+# Source - https://stackoverflow.com/a/44570412
+# Posted by Stéphane Laurent, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-02-17, License - CC BY-SA 4.0
+
+install.packages("hash")
+library(hash)
+## hash-2.2.6 provided by Decision Patterns
+h <- hash() 
+# set values
+h[["1"]] <- 42
+h[["foo"]] <- "bar"
+h[["4"]] <- list(a=1, b=2)
+# get values
+h[["1"]]
+## [1] 42
+h[["4"]]
+## $a
+## [1] 1
+## 
+## $b
+## [1] 2
+h[c("1", "foo")]
+## <hash> containing 2 key-value pair(s).
+##   1 : 42
+##   foo : bar
+h[["key not here"]]
+## NULL
+
+h <- hash("SE" = squared_exponential_kernel, "PER" = 2, "Lin" = 3) 
+print(h[["SE"]])
+keys(h)
+```
+
