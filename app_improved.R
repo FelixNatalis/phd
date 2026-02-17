@@ -14,13 +14,6 @@ n_points = 200
 epsilon = 1e-6
 
 # Kernels
-# kernel_combinations = hash(
-#           "Changepoint" = 5,
-#           "Lin + SE" = 6,
-#           "Lin * SE" = 7,
-#           "Per + SE" = 8,
-#           "Per * SE" = 9
-# )
 
 # SE kernel function
 squared_exponential_kernel <- function(x1, x2, lambda, sigma_2) {
@@ -37,16 +30,22 @@ linear_kernel <- function(x1, x2, lambda, sigma_2) {
 }
 
 kernels <- hash(
-  "Squared Exponential" = 2#squared_exponential_kernel
+  "Squared Exponential" = squared_exponential_kernel
   #,"Matérn" = 2, 
-  ,"Linear" = 1#linear_kernel
+  ,"Linear" = linear_kernel
   #,"Periodic" = 4
   ) 
 
-kernel <- squared_exponential_kernel#linear_kernel
+# kernel_combinations = hash(
+#           "Changepoint" = 5,
+#           "Lin + SE" = 6,
+#           "Lin * SE" = 7,
+#           "Per + SE" = 8,
+#           "Per * SE" = 9
+# )
 
 # Drawing GP
-simulate_gp <- function(x, lambda, sigma_k, sigma_noise = 1e-3, mean_fun = function(x) 0) {
+simulate_gp <- function(x, kernel, lambda, sigma_k, sigma_noise = 1e-3, mean_fun = function(x) 0) {
   
   K <- kernel(x, x, lambda, sigma_k)
   L <- chol(K + epsilon * diag(length(x)))
@@ -72,7 +71,6 @@ ui <- fluidPage(
                        #, `Kernel combinations` = keys(kernel_combinations)
                        )
       ),
-      #textOutput("kernel_choice"),
       tags$hr(),
       
       tags$h4("Hyperparameters for λ"),
@@ -118,20 +116,12 @@ ui <- fluidPage(
 
 server <- function(input, output) {
   
-  #output$kernel_choice <- renderText({
-  #  paste(print(kernels[[input$kernel_label]]))
-  #})
+  # Kernel choice
+  kernel_choice <- eventReactive(input$kernel_label, {
+    return(kernels[[input$kernel_label]])
+  })
   
-    
-  #kernel <- eventReactive(input$kernel_label, {
-  #  chosen <- kernels[[input$kernel_label]]
-    
-  #  return(chosen)
-  #})
-  
-  #output$kernel_choice <-  renderText({paste("AAAAAAAAAAAAAAAAAAAAAAAAAAAA44", kernel)})
-  
-  
+
   #Inv-Gamma
   lambda_draw <- eventReactive(input$draw_lambda, { 
     seed_val <- digest(list(input$ig_alpha, input$ig_beta), algo="xxhash32", serialize=TRUE) |> 
@@ -173,11 +163,11 @@ server <- function(input, output) {
   
   
   gp_funcs <- reactive({
-    req(lambda_draw(), sigma_2_draw())
+    req(kernel_choice(), lambda_draw(), sigma_2_draw())
     
     x_orig <- seq(x_min, x_max, length.out = n_points)
     funcs <- replicate(input$nfunc,
-                       simulate_gp(x_orig, lambda_draw(), sigma_2_draw()))#, mean_fun = function(x) 10 + 5 * x_orig) ))
+                       simulate_gp(x_orig, kernel_choice(), lambda_draw(), sigma_2_draw()))#, mean_fun = function(x) 10 + 5 * x_orig) ))
     
     list(x_orig = x_orig, funcs = funcs)
   })
@@ -187,8 +177,9 @@ server <- function(input, output) {
   last_pool   <- reactiveVal(NULL)
   
   gp_pool <- eventReactive(input$draw_gp, {
-    req(lambda_draw(), sigma_2_draw())
+    req(kernel_choice(), lambda_draw(), sigma_2_draw())
     
+    kernel <- kernel_choice()
     lam <- lambda_draw()
     sig <- sigma_2_draw()
     old_params <- last_params()
@@ -197,6 +188,7 @@ server <- function(input, output) {
     # reuse pool when parameters unchanged
     if (!is.null(old_params) &&
         is.list(old_params) &&
+        identical(old_params$kernel_prev, kernel) &&
         identical(signif(old_params$lambda,10), signif(lam,10)) &&
         identical(signif(old_params$sigma_2,10),  signif(sig,10)) &&
         !is.null(old_pool) &&
@@ -208,13 +200,13 @@ server <- function(input, output) {
     x_orig <- seq(x_min, x_max, length.out = n_points)
     funcs <- replicate(
       n_functions,
-      simulate_gp(x_orig, lam, sig)#, mean_fun = function(x) 10 + 5 * x_orig)
+      simulate_gp(x_orig, kernel, lam, sig)#, mean_fun = function(x) 10 + 5 * x_orig)
 
     )
     
     new_pool <- list(x_orig = x_orig, funcs = funcs)
     
-    last_params(list(lambda = lam, sigma_2 = sig))
+    last_params(list(kernel_prev = kernel, lambda = lam, sigma_2 = sig))
     last_pool(new_pool)
     
     new_pool
@@ -324,18 +316,18 @@ server <- function(input, output) {
   
  # Kernel based on distance plot
   output$kernelPlot <- renderPlot({
-    req(lambda_draw(), sigma_2_draw())
+    req(kernel_choice(), lambda_draw(), sigma_2_draw())
     
     dist <- seq(-3, 3, length.out = 300)
     x_o <- rep(0, length(dist))
     lambda <- lambda_draw()
     sigma_2  <- sigma_2_draw()
     
-    k <- kernel(dist, x_o, lambda, sigma_2)
+    k <- kernel_choice()(dist, x_o, lambda, sigma_2)
     
     ggplot(data.frame(dist=dist, k=k), aes(dist,k)) +
       geom_line(color="purple", linewidth=1.2) +
-      labs(title="Squared-Exponential Kernel", x="Distance", y="k(x)") +
+      labs(title=input$kernel_label, x="Distance", y="k(x)") +
       theme_minimal(base_size=14)
   })
   

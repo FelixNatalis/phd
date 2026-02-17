@@ -1,3 +1,4 @@
-.RDataTmp
-.Rhistory
-.exe
+*.RData*
+*.Rhistory
+*.exe
+*/output/*
