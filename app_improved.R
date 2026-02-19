@@ -18,39 +18,38 @@ epsilon = 1e-6
 # SE kernel function
 squared_exponential_kernel <- function(x1, x2, length_scale = 1, variance = 1, roughness = 2.5, period = 1) {
   outer(x1, x2, function(a, b)
-    (variance * exp(-(a - b)^2 / (2 * length_scale^2)))
+    (variance^2 * exp(-(a - b)^2 / (2 * length_scale^2)))
   )
 }
 
 # Linear kernel function
 linear_kernel <- function(x1, x2, length_scale = 1, variance = 1, roughness = 2.5, period = 1) {
   outer(x1, x2, function(a, b)
-    (variance * a * b)
+    (variance^2 * a * b)
   )
 }
 
 # Matérn kernel function
-matern_kernel <- function(x1, x2, length_scale = 1, variance = 1, roughness = 1.5, period = 1) {
-  outer(x1, x2, function(a, b){
-    length_scale = 1
-    variance = 1
-    roughness = 1.5
-    distance <- (a - b)^2
-
-    term <- sqrt(2 * roughness) * ((a - b)^2 + 1e-5) / length_scale^2
-    matrix<- variance * 2^(1 - roughness) / gamma(roughness) * term^roughness * besselK(term, roughness)
-    matrix[distance == 0] <- 1
-    return (matrix)
-  }
-  )
+matern_kernel <- function(x1, x2, length_scale = 1, variance = 1, roughness = 2.5, period = 1) {
+  distance <- outer(x1, x2, function(a, b) abs(a - b))
+  term <- sqrt(2 * roughness) * distance / length_scale
+  K <- variance^2 * (2^(1 - roughness) / gamma(roughness)) * (term^roughness) * besselK(term, roughness)
+  K[distance == 0] <- variance^2   # Handle the distance = 0 case explicitly
+  K
 }
 
+# Periodic kernel function
+periodic_kernel <- function(x1, x2, length_scale = 1, variance = 1, roughness = 2.5, period = 1) {
+  outer(x1, x2, function(a, b)
+    (variance^2 * exp(-2 * sin(pi * abs(a - b) / period)^2 / length_scale^2))
+  )
+}
 
 kernels <- hash(
   "Squared Exponential" = squared_exponential_kernel
   ,"Matérn" = matern_kernel
   ,"Linear" = linear_kernel
-  #,"Periodic" = 4
+  ,"Periodic" = periodic_kernel
   ) 
 
 # kernel_combinations = hash(
@@ -100,7 +99,7 @@ ui <- fluidPage(
       tags$hr(),
       
       tags$h4("Hyperparameters for variance"),
-      sliderInput("ht_mu", "Half-t mean:", 0, 15, 0),
+     # sliderInput("ht_mu", "Half-t mean:", 0, 15, 0),
       sliderInput("ht_df", "Half-t degrees of freedom:", 1, 5, 4),
       sliderInput("ht_scale", "Half-t scale:", 1, 15, 1),
       checkboxInput("variance_mle", "Use MLE", FALSE),
@@ -167,14 +166,14 @@ server <- function(input, output) {
   
   
   variance_draw <- eventReactive(input$draw_variance, {
-    seed_val <- digest(list(input$ht_mu, input$ht_df, input$ht_scale), algo="xxhash32", serialize=TRUE) |> 
+    seed_val <- digest(list(input$ht_df, input$ht_scale), algo="xxhash32", serialize=TRUE) |>  #input$ht_mu, 
       substr(1,7) |> strtoi(base=16)
     set.seed(seed_val)
     
     if (isTRUE(input$variance_mle)) {
-      return(input$ht_mu)    # half-t MLE occurs at lower bound = μ
+      return(0)    # input$ht_mu half-t MLE occurs at lower bound = μ
     } else {
-      return(input$ht_mu + input$ht_scale * varhalfT(runif(1), n=input$ht_df))
+      return(input$ht_scale * varhalfT(runif(1), n=input$ht_df)) # input$ht_mu +
     }
   })
   
@@ -309,7 +308,8 @@ server <- function(input, output) {
     
     x <- seq(0, 15, length.out = 400)
     df <- input$ht_df
-    mu <- input$ht_mu
+    #mu <- input$ht_mu
+    mu <- 0
     sc <- input$ht_scale
     
     dens <- 2 * dt((x - mu)/sc, df = df) / sc
@@ -357,7 +357,7 @@ server <- function(input, output) {
       geom_line(alpha=0.9, linewidth=1) +
       scale_color_discrete(guide="none") +
       labs(title="Gaussian Process Prior Samples",
-           subtitle="Squared Exponential Kernel",
+           subtitle= paste(input$kernel_label, "Kernel"),
            x="x", y="f(x)") +
       theme_minimal(base_size=16)
   })

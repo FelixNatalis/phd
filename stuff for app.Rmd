@@ -113,6 +113,7 @@ matern_kernel <- function(X1, X2, sigma = 1, l = 1, nu = 2.5) {
   term <- sqrt(2 * nu) * distance / l
   K <- sigma * (2^(1 - nu) / gamma(nu)) * (term^nu) * besselK(term, nu)
   K[distance == 0] <- 1
+  print(K)
   K
 }
 ```
@@ -131,7 +132,8 @@ plot_gp(matern_kernel, nu = 0.5)
 
 ```{r}
 matern_kernel_o <- function(X1, X2, sigma = 1, l = 1, nu = 2.5) {
-  outer(X1, X2, function(a, b){
+a = X1
+b = X2
   if (is.null(dim(a))) dim(a) <- c(1, length(a))
   if (is.null(dim(b))) dim(b) <- c(1, length(b))
     #distance <- sqrt((a - b)^2)
@@ -143,9 +145,8 @@ matern_kernel_o <- function(X1, X2, sigma = 1, l = 1, nu = 2.5) {
     term <- sqrt(2 * nu) * distance / l
     matrix<- sigma * 2^(1 - nu) / gamma(nu) * term^nu * besselK(term, nu)
     matrix[distance == 0] <- 1
+    print(matrix)
     return (matrix)
-  }
-  )
 }
 
 ```
