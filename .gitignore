@@ -2,3 +2,5 @@
 *.Rhistory
 *.exe
 */output/*
+*.png
+*.html
