@@ -160,4 +160,46 @@ plot_kernel_value(matern_kernel_o, nu = 1.5)
 plot_gp(matern_kernel_o, nu = 1.5)
 ```
 
+```{r}
+install.packages("gtools")
+library(gtools)
+
+squared_exponential_kernel <- function(x1, x2, length_scale, variance) {
+  outer(x1, x2, function(a, b)
+    (variance^2 * exp(-(a - b)^2 / (2 * length_scale^2)))
+  )
+}
+
+# Linear kernel function
+linear_kernel <- function(x1, x2, variance) {
+  outer(x1, x2, function(a, b)
+    (variance^2 * a * b)
+  )
+}
+
+kernels <- hash(
+  "Squared Exponential" = squared_exponential_kernel
+  ,"Matérn" = matern_kernel
+  ,"Linear" = linear_kernel
+  ,"Periodic" = periodic_kernel
+  ) 
+
+kernel <- function(kernel_label, x1, x2, variance, length_scale = NA, roughness = NA, period = NA){
+  if(kernel_label == "Linear"){
+    if(!invalid(x1) & !invalid(x2) & !invalid(variance)){
+      return(linear_kernel(x1, x2, variance))
+    }
+  }
+  if(kernel_label == "Squared Exponential"){
+    if(!invalid(x1) & !invalid(x2) & !invalid(variance) & !invalid(length_scale)){
+      return(squared_exponential_kernel(x1, x2, length_scale, variance))
+    }
+  }
+}
+
+  kernel_choice <- eventReactive(input$kernel_label, {
+    #return(kernels[[input$kernel_label]])
+    return(kernel(input$kernel_label))
+  })
+```
 

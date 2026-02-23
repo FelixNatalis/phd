@@ -5,6 +5,8 @@ library(VaRES)
 library(digest)
 library(statmod)
 library(hash)
+library(shiny)
+library(bslib)
 
 # defaults parameters for GP prior predictive draws
 n_functions = 10
@@ -78,58 +80,67 @@ simulate_gp <- function(x, kernel, length_scale, variance, sigma_noise = 1e-3, m
 
 ## UI
 
-ui <- fluidPage(
-  sidebarLayout(
-    sidebarPanel(
-      tags$h4("Kernel"),
-      selectInput("kernel_label", "Choose a kernel:",
-                  list(`Simple kernels` = keys(kernels)
-                       #, `Kernel combinations` = keys(kernel_combinations)
-                       )
-      ),
-      tags$hr(),
-      
-      tags$h4("Hyperparameters for length scale"),
-      sliderInput("ig_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
-      sliderInput("ig_beta", "Inverse-Gamma beta:", 1, 15, 1),
-      #sliderInput("ig_mu", "Inverse-Gaussian mean:", 1, 15, 1),
-      #sliderInput("ig_length_scale", "Inverse-Gaussian shape:", 1, 15, 1),
-      checkboxInput("length_scale_mle", "Use MLE", FALSE),
-      actionButton("draw_length_scale", "Draw New Length Scale"),
-      tags$hr(),
-      
-      tags$h4("Hyperparameters for variance"),
-     # sliderInput("ht_mu", "Half-t mean:", 0, 15, 0),
-      sliderInput("ht_df", "Half-t degrees of freedom:", 1, 5, 4),
-      sliderInput("ht_scale", "Half-t scale:", 1, 15, 1),
-      checkboxInput("variance_mle", "Use MLE", FALSE),
-      actionButton("draw_variance", "Draw New Variance"),
-      tags$hr(),
+ui <- page_fluid(
+  #sidebarLayout(
+    #sidebarPanel(
+  layout_columns(
+    card( "Parameters",
+        #  layout_columns(
+            card( 
+              card_header("Kernel"),
+              selectInput("kernel_label", "Choose a kernel:",
+                          list(`Simple kernels` = keys(kernels)
+                               #, `Kernel combinations` = keys(kernel_combinations)
+                          )
+              ),
+              actionButton("draw_kernel", "Draw kernel")
+            ), 
+            
+            card(
+              card_header("Hyperparameters for length scale"),
+              sliderInput("ig_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
+              sliderInput("ig_beta", "Inverse-Gamma beta:", 1, 15, 1),
+              #sliderInput("ig_mu", "Inverse-Gaussian mean:", 1, 15, 1),
+              #sliderInput("ig_length_scale", "Inverse-Gaussian shape:", 1, 15, 1),
+              checkboxInput("length_scale_mle", "Use MLE", FALSE),
+              actionButton("draw_length_scale", "Draw New Length Scale"),
+            ),
+          card(
+            card_header("Hyperparameters for variance"),
+            # sliderInput("ht_mu", "Half-t mean:", 0, 15, 0),
+            sliderInput("ht_df", "Half-t degrees of freedom:", 1, 5, 4),
+            sliderInput("ht_scale", "Half-t scale:", 1, 15, 1),
+            checkboxInput("variance_mle", "Use MLE", FALSE),
+            actionButton("draw_variance", "Draw New Variance"),
 
-      #tags$h4("Other parameters"),
-      #sliderInput("sigma_n", "Noise amplitude:", 0, 15, 1),
-      sliderInput("nfunc", "Number of Functions:", 1, n_functions, 3),
-      #sliderInput("n_points", "Number of X Points:", 20, 400, 200),
-      #sliderInput("x_max", "X Range:", 2, 20, 10),
-      actionButton("draw_gp", "Draw GP")
+          ),
+          card(
+            card_header("Other parameters"),
+            #sliderInput("sigma_n", "Noise amplitude:", 0, 15, 1),
+            sliderInput("nfunc", "Number of Functions:", 1, n_functions, 3),
+            #sliderInput("n_points", "Number of X Points:", 20, 400, 200),
+            #sliderInput("x_max", "X Range:", 2, 20, 10),
+            actionButton("draw_gp", "Draw GP")
+          )
     ),
-    
-    mainPanel(
+    card(
+  #  mainPanel(
       #actionButton("restart", "Restart Session"),
-      fluidRow(
-        column(6, plotOutput("plot_ig", height = "250px")),
+      layout_columns(
+        card(plotOutput("plot_ig", height = "250px")),
+        card(plotOutput("plot_ht", height = "250px")),
+        card(plotOutput("kernelPlot", height = "250px"))
+        #column(6, plotOutput("plot_ig", height = "250px")),
         #column(6, plotOutput("plot_ig_gauss", height = "250px"))
-        column(6, plotOutput("plot_ht", height = "250px"))
+        #column(6, plotOutput("plot_ht", height = "250px"))
       ),
-      tags$br(),
-      plotOutput("kernelPlot", height = "250px"),
-      tags$br(),
-      plotOutput("gpPlot", height = "600px")
-      
-    )
-  )
+      card(plotOutput("gpPlot", height = "600px"))
+ #   )
+    ),
+ # )
+ col_widths = c(2, 10) 
 )
-
+)
 server <- function(input, output) {
   
   # Kernel choice
@@ -333,7 +344,7 @@ server <- function(input, output) {
   
  # Kernel based on distance plot
   output$kernelPlot <- renderPlot({
-    req(kernel_choice(), length_scale_draw(), variance_draw())
+    req(kernel_choice(), length_scale_draw(), variance_draw(), input$draw_kernel)
     
     dist <- seq(-3, 3, length.out = 300)
     x_o <- rep(0, length(dist))
