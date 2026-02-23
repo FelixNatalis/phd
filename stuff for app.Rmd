@@ -178,10 +178,7 @@ linear_kernel <- function(x1, x2, variance) {
 }
 
 kernels <- hash(
-  "Squared Exponential" = squared_exponential_kernel
-  ,"Matérn" = matern_kernel
-  ,"Linear" = linear_kernel
-  ,"Periodic" = periodic_kernel
+  "Squared Exponential" = squared_exponential_kernel,"Linear" = linear_kernel
   ) 
 
 kernel <- function(kernel_label, x1, x2, variance, length_scale = NA, roughness = NA, period = NA){
@@ -197,9 +194,61 @@ kernel <- function(kernel_label, x1, x2, variance, length_scale = NA, roughness 
   }
 }
 
-  kernel_choice <- eventReactive(input$kernel_label, {
+#  kernel_choice <- eventReactive(input$kernel_label, {
     #return(kernels[[input$kernel_label]])
-    return(kernel(input$kernel_label))
-  })
+#    return(kernel(input$kernel_label))
+ # })
+
+
+```
+
+```{r}
+dist <- seq(-3, 3, length.out = 5)
+x_o <- rep(0, length(dist))
+l_s <- 2
+v <- 3
+
+kernel_choice <- kernel("Squared Exponential", dist, x_o, variance = v, length_scale = l_s)
+k<- kernel_choice[,1]
+ggplot(data.frame(dist=dist, k=k), aes(dist,k)) +
+      geom_line(color="purple", linewidth=1.2) +
+      labs(title="f", x="Distance", y="k(x)") +
+      theme_minimal(base_size=14)
+```
+```{r}
+k[,1]
+```
+
+```{r}
+    x <- seq(0, 15, length.out = 400)
+    df <- 2
+    #mu <- input$ht_mu
+    mu <- 0
+    sc <- 2
+    
+    draw <- sc * varhalfT(runif(1), n=df)
+    
+    dens <- 2 * dt((x - mu)/sc, df = df) / sc
+    dens[x < mu] <- 0
+    d <- data.frame(x=x, y=dens)
+    
+    ggplot(d, aes(x,y)) +
+      geom_line(color="darkgreen", linewidth=1) +
+  #    geom_point(aes(x=draw, y=0), color="red", size=3) +
+      annotate("text",
+               x = max(d$x) * 0.8,
+               y = max(d$y) * 0.9,
+               label = paste0("σ^2 = ", signif(draw,3)),
+               color="red",
+               size = 5,
+               hjust = 0) +
+      labs(title="Half-t prior for σ^2",
+           y="density", x="σ^2") +
+      theme_minimal(base_size=14) +
+     annotate("point", x = draw, y = 0, colour = "red")
+```
+
+```{r}
+draw
 ```
 

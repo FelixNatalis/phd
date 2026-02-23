@@ -81,11 +81,8 @@ simulate_gp <- function(x, kernel, length_scale, variance, sigma_noise = 1e-3, m
 ## UI
 
 ui <- page_fluid(
-  #sidebarLayout(
-    #sidebarPanel(
   layout_columns(
     card( "Parameters",
-        #  layout_columns(
             card( 
               card_header("Kernel"),
               selectInput("kernel_label", "Choose a kernel:",
@@ -124,23 +121,21 @@ ui <- page_fluid(
           )
     ),
     card(
-  #  mainPanel(
-      #actionButton("restart", "Restart Session"),
       layout_columns(
         card(plotOutput("plot_ig", height = "250px")),
         card(plotOutput("plot_ht", height = "250px")),
         card(plotOutput("kernelPlot", height = "250px"))
-        #column(6, plotOutput("plot_ig", height = "250px")),
         #column(6, plotOutput("plot_ig_gauss", height = "250px"))
-        #column(6, plotOutput("plot_ht", height = "250px"))
       ),
       card(plotOutput("gpPlot", height = "600px"))
- #   )
     ),
- # )
  col_widths = c(2, 10) 
 )
 )
+
+
+
+
 server <- function(input, output) {
   
   # Kernel choice
@@ -276,7 +271,7 @@ server <- function(input, output) {
     
     ggplot(d, aes(x,y)) +
       geom_line(color="steelblue", linewidth=1) +
-      geom_point(aes(x=length_scale_draw(), y=0), color="red", size=3) +
+      annotate("point", x = length_scale_draw(), y = 0, colour = "red", size = 3) +
       annotate("text",
                x = max(d$x) * 0.8,
                y = max(d$y) * 0.9,
@@ -329,7 +324,7 @@ server <- function(input, output) {
     
     ggplot(d, aes(x,y)) +
       geom_line(color="darkgreen", linewidth=1) +
-      geom_point(aes(x=variance_draw(), y=0), color="red", size=3) +
+      annotate("point", x = variance_draw(), y = 0, colour = "red", size = 3) +
       annotate("text",
                x = max(d$x) * 0.8,
                y = max(d$y) * 0.9,
@@ -351,7 +346,7 @@ server <- function(input, output) {
     length_scale <- length_scale_draw()
     variance  <- variance_draw()
     
-    k <- kernel_choice()(dist, x_o, length_scale, variance)
+    k <- kernel_choice()(dist, x_o, length_scale, variance)[,1]
     
     ggplot(data.frame(dist=dist, k=k), aes(dist,k)) +
       geom_line(color="purple", linewidth=1.2) +
