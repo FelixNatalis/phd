@@ -7,6 +7,8 @@ library(statmod)
 library(hash)
 library(shiny)
 library(bslib)
+library(gtools)
+library(shinyjs)
 
 # defaults parameters for GP prior predictive draws
 n_functions = 10
@@ -62,7 +64,11 @@ kernels <- hash(
 #           "Per * SE" = 9
 # )
 
-kernel_wrapper <- function(kernel_label, x1, x2, variance, length_scale = NA, roughness = NA, period = NA){
+kernel_wrapper <- function(kernel_label, x1, x2, params){ # variance, length_scale = NA, roughness = NA, period = NA
+  variance = params[["variance"]]
+  length_scale = params[["length_scale"]]
+  roughness = params[["roughness"]]
+  period = params[["period"]]
   
   if(kernel_label == "Linear"){
     if(!invalid(x1) & !invalid(x2) & !invalid(variance)){
@@ -90,8 +96,8 @@ kernel_wrapper <- function(kernel_label, x1, x2, variance, length_scale = NA, ro
 }
 
 # Drawing GP
-simulate_gp <- function(x, kernel_label, length_scale, variance, period, roughness, sigma_noise = 1e-3, mean_fun = function(x) 0) { #!!!!
-  K <- kernel_wrapper(kernel_label, x, x, variance = variance, length_scale = length_scale, period = period, roughness = roughness)
+simulate_gp <- function(x, kernel_label, kernel_params, sigma_noise = 1e-3, mean_fun = function(x) 0) { #!!!! length_scale, variance, period, roughness, 
+  K <- kernel_wrapper(kernel_label, x, x, params = kernel_params) #  variance = variance, length_scale = length_scale, period = period, roughness = roughness
   L <- chol(K + epsilon * diag(length(x)))
   m <- mean_fun(x)
   f <- m + t(L) %*% rnorm(length(x))
@@ -105,16 +111,29 @@ simulate_gp <- function(x, kernel_label, length_scale, variance, period, roughne
 ## UI
 
 ui <- page_fillable(
+  tags$style(type='text/css', " .selectize-input { font-size:80%; line-height: 16px;} .selectize-dropdown { font-size:80%; line-height: 16px; } .control-label { font-size:80%;}
+  .card-header {
+    padding: 4px;
+    font-size:80%;
+  }
+  .btn {
+    padding: 2px 6px;
+    font-size: 80%;
+  }
+               .card-body {
+    display: inline-block;
+  }"),
+  useShinyjs(),
   layout_columns(
     card( "Parameters",
             card( 
-              card_header("Kernel"),
+              card_header("Kernel", style='padding:4px; font-size:80%'),
               selectInput("kernel_label", "Choose a kernel:",
                           list(`Simple kernels` = keys(kernels)
                                #, `Kernel combinations` = keys(kernel_combinations)
-                          )
-              ),
-              actionButton("draw_kernel", "Draw kernel")
+                          )),
+              #disabled(
+              actionButton("draw_kernel", "Draw kernel")#)
             ), 
             
           card(
@@ -122,7 +141,7 @@ ui <- page_fillable(
             # sliderInput("ht_mu", "Half-t mean:", 0, 15, 0),
             sliderInput("ht_df", "Half-t degrees of freedom:", 1, 5, 4),
             sliderInput("ht_scale", "Half-t scale:", 1, 15, 1),
-            checkboxInput("variance_mle", "Use MLE", FALSE),
+           # checkboxInput("variance_mle", "Use MLE", FALSE),
             actionButton("draw_variance", "Draw New Variance"),
 
           ),
@@ -135,7 +154,7 @@ ui <- page_fillable(
             sliderInput("nfunc", "Number of Functions:", 1, n_functions, 3),
             #sliderInput("n_points", "Number of X Points:", 20, 400, 200),
             #sliderInput("x_max", "X Range:", 2, 20, 10),
-            actionButton("draw_gp", "Draw GP")
+            disabled(actionButton("draw_gp", "Draw GP"))
           )
     ),
     card(
@@ -169,12 +188,12 @@ server <- function(input, output) {
       substr(1,7) |> strtoi(base=16)
     set.seed(seed_val)
     
-    if (isTRUE(input$length_scale_mle)) {
-      # MLE of InvGamma(α,β)
-      length_scale(input$ls_ig_beta / (input$ls_ig_alpha + 1))
-    } else {
+    # if (isTRUE(input$length_scale_mle)) {
+    #   # MLE of InvGamma(α,β)
+    #   length_scale(input$ls_ig_beta / (input$ls_ig_alpha + 1))
+    # } else {
       length_scale(1 / rgamma(1, shape = input$ls_ig_alpha, rate = input$ls_ig_beta))
-    }
+    #}
   })
   
   # Inv-Gaussian
@@ -197,12 +216,12 @@ server <- function(input, output) {
       substr(1,7) |> strtoi(base=16)
     set.seed(seed_val)
     
-    if (isTRUE(input$period_mle)) {
-      # MLE of InvGamma(α,β)
-      period(input$per_ig_beta / (input$per_ig_alpha + 1))
-    } else {
+    # if (isTRUE(input$period_mle)) {
+    #   # MLE of InvGamma(α,β)
+    #   period(input$per_ig_beta / (input$per_ig_alpha + 1))
+    # } else {
       period(1 / rgamma(1, shape = input$per_ig_alpha, rate = input$per_ig_beta))
-    }
+ #   }
   })
   
   variance_draw <- eventReactive(input$draw_variance, {
@@ -210,17 +229,17 @@ server <- function(input, output) {
       substr(1,7) |> strtoi(base=16)
     set.seed(seed_val)
     
-    if (isTRUE(input$variance_mle)) {
-      # input$ht_mu half-t MLE occurs at lower bound = μ
-      variance(0)
-    } else {
+    # if (isTRUE(input$variance_mle)) {
+    #   # input$ht_mu half-t MLE occurs at lower bound = μ
+    #   variance(0)
+    # } else {
       variance(input$ht_scale * varhalfT(runif(1), n=input$ht_df)) # input$ht_mu +
-    }
+    #}
   })
   
   
   gp_pool <- eventReactive(input$draw_gp, {
-    req(input$draw_kernel, length_scale(), variance(), period(), input$nu)
+    #req(input$draw_kernel, length_scale(), variance(), period(), input$nu)
     
     kernel <- input$kernel_label
     len <- length_scale()
@@ -245,9 +264,17 @@ server <- function(input, output) {
     }
     
     x_orig <- seq(x_min, x_max, length.out = n_points)
+    
+    kernel_params <- hash(
+      "variance" = var
+      ,"length_scale" = len
+      ,"period" = per
+      ,"roughness" = ro
+    )
+    
     funcs <- replicate(
       n_functions,
-      simulate_gp(x_orig, input$kernel_label, len, var, per, ro)#, mean_fun = function(x) 10 + 5 * x_orig) !!!
+      simulate_gp(x_orig, input$kernel_label, kernel_params)#, mean_fun = function(x) 10 + 5 * x_orig) !!!
 
     )
     
@@ -279,7 +306,13 @@ server <- function(input, output) {
     )
   })
   
+  observeEvent(input$draw_kernel, {
+    enable("draw_gp")
+  })
   
+  # observeEvent(input$kernel_draw, {
+  #   enable("kernel_draw")
+  # })
   
   ### plots
   
@@ -370,7 +403,7 @@ server <- function(input, output) {
         sliderInput("ls_ig_beta", "Inverse-Gamma beta:", 1, 15, 1),
         #sliderInput("ig_mu", "Inverse-Gaussian mean:", 1, 15, 1),
         #sliderInput("ig_length_scale", "Inverse-Gaussian shape:", 1, 15, 1),
-        checkboxInput("length_scale_mle", "Use MLE", FALSE),
+        #checkboxInput("length_scale_mle", "Use MLE", FALSE),
         actionButton("draw_length_scale", "Draw New Length Scale"),
       )
     }
@@ -385,7 +418,7 @@ server <- function(input, output) {
         sliderInput("per_ig_beta", "Inverse-Gamma beta:", 1, 15, 1),
         #sliderInput("ig_mu", "Inverse-Gaussian mean:", 1, 15, 1),
         #sliderInput("ig_length_scale", "Inverse-Gaussian shape:", 1, 15, 1),
-        checkboxInput("period_mle", "Use MLE", FALSE),
+        #checkboxInput("period_mle", "Use MLE", FALSE),
         actionButton("draw_period", "Draw New Period")
       )
     }
@@ -414,9 +447,10 @@ server <- function(input, output) {
       card(plotOutput("plot_ig_per", height = "250px"))
     }
   })
+
+
   
-  # !!!!! for period
-  # Inverse-Gamma prior for length_scale plot
+  # Inverse-Gamma prior for period plot
   output$plot_ig_per <- renderPlot({
     req(period_draw())
 
@@ -444,16 +478,22 @@ server <- function(input, output) {
   
  # Kernel based on distance plot
   output$kernelPlot <- renderPlot({
-    req(input$kernel_label, length_scale_draw(), variance_draw(), period_draw(), input$draw_kernel, input$nu)
+    req(input$draw_kernel)#input$kernel_label, length_scale_draw(), variance_draw(), period_draw(), , input$nu)
     
     dist <- seq(-3, 3, length.out = 300)
     x_o <- rep(0, length(dist))
-    length_scale <- length_scale()
-    variance  <- variance()
-    period = period()
-    roughness = input$nu
+    # length_scale <- length_scale()
+    # variance  <- variance()
+    # period = period()
+    # roughness = input$nu
+    kernel_params <- hash(
+      "variance" = variance()
+      ,"length_scale" = length_scale()
+      ,"period" = period()
+      ,"roughness" = input$nu
+    )
     
-    k <- kernel_wrapper(input$kernel_label, dist, x_o, variance = variance, length_scale = length_scale, period = period, roughness = roughness)[,1]
+    k <- kernel_wrapper(input$kernel_label, dist, x_o, kernel_params)[,1] #  variance = variance, length_scale = length_scale, period = period, roughness = roughness
     
     ggplot(data.frame(dist=dist, k=k), aes(dist,k)) +
       geom_line(color="purple", linewidth=1.2) +
