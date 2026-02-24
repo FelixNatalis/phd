@@ -132,8 +132,7 @@ ui <- page_fillable(
                           list(`Simple kernels` = keys(kernels)
                                #, `Kernel combinations` = keys(kernel_combinations)
                           )),
-              #disabled(
-              actionButton("draw_kernel", "Draw kernel")#)
+              actionButton("draw_kernel", "Draw kernel")
             ), 
             
           card(
@@ -182,6 +181,14 @@ server <- function(input, output) {
   roughness     <- reactiveVal(NULL)
   period        <- reactiveVal(NULL)
 
+  shinyjs::disable("draw_kernel")
+  
+  rv <- reactiveValues(
+    var = FALSE,
+    ls  = FALSE,
+    per = FALSE
+  )
+  
   #Inv-Gamma
   length_scale_draw <- eventReactive(input$draw_length_scale, { 
     seed_val <- digest(list(input$ls_ig_alpha, input$ls_ig_beta), algo="xxhash32", serialize=TRUE) |> 
@@ -192,6 +199,7 @@ server <- function(input, output) {
     #   # MLE of InvGamma(α,β)
     #   length_scale(input$ls_ig_beta / (input$ls_ig_alpha + 1))
     # } else {
+    rv$ls <- TRUE
       length_scale(1 / rgamma(1, shape = input$ls_ig_alpha, rate = input$ls_ig_beta))
     #}
   })
@@ -220,6 +228,7 @@ server <- function(input, output) {
     #   # MLE of InvGamma(α,β)
     #   period(input$per_ig_beta / (input$per_ig_alpha + 1))
     # } else {
+    rv$per <- TRUE
       period(1 / rgamma(1, shape = input$per_ig_alpha, rate = input$per_ig_beta))
  #   }
   })
@@ -233,10 +242,31 @@ server <- function(input, output) {
     #   # input$ht_mu half-t MLE occurs at lower bound = μ
     #   variance(0)
     # } else {
+    rv$var <- TRUE
       variance(input$ht_scale * varhalfT(runif(1), n=input$ht_df)) # input$ht_mu +
     #}
   })
   
+  observe({
+    if (input$kernel_label == "Linear" && rv$var) {
+      shinyjs::enable("draw_kernel")
+      
+    } else if (input$kernel_label == "Periodic" &&
+               rv$var && rv$ls && rv$per) {
+      shinyjs::enable("draw_kernel")
+      
+    } else if (input$kernel_label == "Squared Exponential" &&
+               rv$var && rv$ls) {
+      shinyjs::enable("draw_kernel")
+      
+    } else if (input$kernel_label == "Matérn" &&
+              rv$var && rv$ls) {
+      shinyjs::enable("draw_kernel")
+      
+    } else {
+      shinyjs::disable("draw_kernel")
+    }
+  })
   
   gp_pool <- eventReactive(input$draw_gp, {
     #req(input$draw_kernel, length_scale(), variance(), period(), input$nu)
@@ -423,6 +453,7 @@ server <- function(input, output) {
       )
     }
   })
+  
   
   
   output$dynamic_nu_choice <- renderUI({
