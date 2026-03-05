@@ -361,6 +361,13 @@ x_seq <- seq(0, 15, length.out = 400)
 #_________________________________________________________________________________________________
 
 ```{r}
+#pkgbuild::has_rtools()
+#install.packages("https://cran.r-project.org/src/contrib/Archive/tmg/tmg_0.3.tar.gz",repos = NULL,type = "source")
+#install.packages("https://cran.r-project.org/src/contrib/Archive/restrictedMVN/restrictedMVN_1.0.tar.gz",repos = NULL,type = "source")
+#install.packages("C:/Users/margo/Downloads/lineqGPR_0.0.3.tar.gz",repos = NULL,type = "source")
+# install.packages("rlang")
+#install.packages(c("DiceKriging", "DiceDesign", "Matrix", "tmvtnorm"))
+
 library("lineqGPR")
 
 rm(list=ls())
