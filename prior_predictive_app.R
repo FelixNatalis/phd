@@ -5,7 +5,7 @@ library(VaRES)
 library(digest)
 library(statmod)
 library(hash)
-library(shiny)
+library(shinyWidgets)
 library(bslib)
 library(gtools)
 library(shinyjs)
@@ -62,18 +62,20 @@ periodic_kernel <- function(x1, x2, variance, length_scale, period) {
 }
 
 # Periodic * squared exponential kernel function
-per_and_se_kernel <- function(x1, x2, variance, length_scale, period) {
-  outer(x1, x2, function(a, b)
-    (variance^2 * exp(-2 * sin(pi * abs(a - b) / period)^2 / length_scale^2)) * 
-      (variance^2 * exp(-(a - b)^2 / (2 * length_scale^2)))
-  )
+per_and_se_kernel <- function(x1, x2, variance_1, length_scale_1, period, variance_2, length_scale_2) {
+  return(periodic_kernel(x1, x2, variance = variance_1, length_scale = length_scale_1, period = period)*
+    squared_exponential_kernel(x1, x2, variance = variance_2, length_scale = length_scale_2))
+  # outer(x1, x2, function(a, b)
+  #   (variance_1^2 * exp(-2 * sin(pi * abs(a - b) / period)^2 / length_scale_1^2)) * 
+  #     (variance_2^2 * exp(-(a - b)^2 / (2 * length_scale_2^2)))
+  # )
 }
 
 # Periodic + squared exponential kernel function
-per_or_se_kernel <- function(x1, x2, variance, length_scale, period) {
+per_or_se_kernel <- function(x1, x2, variance_1, length_scale_1, period, variance_2, length_scale_2) {
   outer(x1, x2, function(a, b)
-    (variance^2 * exp(-2 * sin(pi * abs(a - b) / period)^2 / length_scale^2)) + 
-      (variance^2 * exp(-(a - b)^2 / (2 * length_scale^2)))
+    (variance_1^2 * exp(-2 * sin(pi * abs(a - b) / period)^2 / length_scale_1^2)) + 
+      (variance_2^2 * exp(-(a - b)^2 / (2 * length_scale_2^2)))
   )
 }
 
@@ -123,14 +125,20 @@ kernel_wrapper <- function(kernel_label, x1, x2, params){
   }
   
   if(kernel_label == "Per * SE"){
-    if(!invalid(x1) & !invalid(x2) & !invalid(variance) & !invalid(length_scale) & !invalid(period)){
-      return(per_and_se_kernel(x1 = x1, x2 = x2, variance = variance, length_scale = length_scale, period = period))
+    if(!invalid(x1) & !invalid(x2) 
+       & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
+       & !invalid(variance[2]) & !invalid(length_scale[2])){
+      return(per_and_se_kernel(x1 = x1, x2 = x2, variance_1 = variance[1], length_scale_1 = length_scale[1], period = period, 
+                                variance_2 = variance[2], length_scale_2 = length_scale[2]))
     }
   }
   
   if(kernel_label == "Per + SE"){
-    if(!invalid(x1) & !invalid(x2) & !invalid(variance) & !invalid(length_scale) & !invalid(period)){
-      return(per_or_se_kernel(x1 = x1, x2 = x2, variance = variance, length_scale = length_scale, period = period))
+    if(!invalid(x1) & !invalid(x2) 
+       & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
+       & !invalid(variance[2]) & !invalid(length_scale[2])){
+      return(per_or_se_kernel(x1 = x1, x2 = x2, variance_1 = variance[1], length_scale_1 = length_scale[1], period = period, 
+                              variance_2 = variance[2], length_scale_2 = length_scale[2]))
     }
   }
 }
@@ -205,44 +213,39 @@ ui <- page_fillable(
   useShinyjs(),
   navset_tab( 
     nav_panel("Kernel", 
-              
               card( "Parameters",
                     card( 
                       card_header("Kernel", style='padding:4px; font-size:80%'),
-                      selectInput("kernel_label", "Choose a kernel:",
-                                  list(`Simple kernels` = keys(kernels), `Kernel combinations` = keys(kernel_combinations)
-                                  )),
-                      actionButton("draw_kernel", "Draw kernel")
+                      layout_columns(
+                        column(width = 8,
+                          selectInput("kernel_label", "Choose a kernel:",
+                                      list(`Simple kernels` = keys(kernels), 
+                                           `Kernel combinations` = keys(kernel_combinations))),
+                          actionButton("draw_kernel", "Draw kernel")),
+                        plotOutput("kernelPlot", height = "250px")
+                      )
                     ), 
                     
                     card(
                       card_header("Hyperparameters for variance"),
                       layout_columns(
-                        card(
-                        sliderInput("ht_df", "Half-t degrees of freedom:", 1, 5, 4),
-                      sliderInput("ht_scale", "Half-t scale:", 1, 15, 1)),
-                        card(plotOutput("plot_ht", height = "250px"))
-                      ),
-                      # sliderInput("ht_mu", "Half-t mean:", 0, 15, 0),
-                      
-                      # checkboxInput("variance_mle", "Use MLE", FALSE),
-                      actionButton("draw_variance", "Draw New Variance")
-                      
+                        column(width = 8, 
+                          sliderInput("variance_df", "Half-t degrees of freedom:", 1, 5, 4),
+                          sliderInput("variance_scale", "Half-t scale:", 1, 15, 1),
+                          actionButton("draw_variance", "Draw New Variance"))
+                      ,plotOutput("plot_variance", height = "250px")
+                      )
                     ),
-                    uiOutput("dynamic_ls_choice"),
-                    uiOutput("dynamic_nu_choice"),
-                    uiOutput("dynamic_per_choice"),
-                    layout_columns(
-                      
-                      uiOutput("dynamic_ls_plot"),
-                      uiOutput("dynamic_per_plot"),
-                      
-                      card(plotOutput("kernelPlot", height = "250px"))
-                    )
-              )
-              
-              
-              ), 
+                    uiOutput("dynamic_length_scale_choice"),
+                    uiOutput("dynamic_roughness_choice"),
+                    uiOutput("dynamic_period_choice"),
+                    uiOutput("dynamic_variance_2_choice"),#!
+                    uiOutput("dynamic_length_scale_2_choice"),#!
+                    uiOutput("dynamic_roughness_2_choice"),#!
+                    uiOutput("dynamic_period_2_choice"),#!
+                    uiOutput("dynamic_changepoint_location_choice"),#!
+                    uiOutput("dynamic_steepness_choice"),#!
+              )), 
     nav_panel("GP", 
               
               card(
@@ -251,7 +254,9 @@ ui <- page_fillable(
                   card_header("Other parameters"),
                   #sliderInput("sigma_n", "Noise amplitude:", 0, 15, 1),
                   sliderInput("nfunc", "Number of Functions:", 1, n_functions, 3),
-                  #sliderInput("n_points", "Number of X Points:", 20, 400, 200),
+                  sliderInput("n_points", "Number of X Points:", 20, 400, 200),
+                  sliderInput("x_range", "x range", min = -100, max = 100, value = c(-10, 10)), 
+                  #sliderInput("x_range", "X Range:", 2, 20, 10),
                   #sliderInput("x_max", "X Range:", 2, 20, 10),
                   disabled(actionButton("draw_gp", "Draw GP"))
                 ),
@@ -311,84 +316,160 @@ server <- function(input, output) {
   })
   
   
-  output$dynamic_ls_choice <- renderUI({
+  output$dynamic_length_scale_choice <- renderUI({
     if (input$kernel_label != "Linear") {
       card(
         card_header("Hyperparameters for length scale"),
-        sliderInput("ls_ig_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
-        sliderInput("ls_ig_beta", "Inverse-Gamma beta:", 1, 15, 1),
-        actionButton("draw_length_scale", "Draw New Length Scale"),
+        layout_columns(
+          column(width = 8,
+        sliderInput("length_scale_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
+        sliderInput("length_scale_beta", "Inverse-Gamma beta:", 1, 15, 1),
+        actionButton("draw_length_scale", "Draw New Length Scale")),
+        plotOutput("plot_length_scale", height = "250px")
+        )
       )
     }
   })
   
-  output$dynamic_per_choice <- renderUI({
-    if (input$kernel_label == "Periodic" | input$kernel_label == "Per * SE"| input$kernel_label == "Per + SE") {
+  output$dynamic_period_choice <- renderUI({
+    if (input$kernel_label == "Periodic") {
       card(
         card_header("Hyperparameters for period"),
-        sliderInput("per_ig_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
-        sliderInput("per_ig_beta", "Inverse-Gamma beta:", 1, 15, 1),
-        actionButton("draw_period", "Draw New Period")
+        layout_columns(
+          column(width = 8,
+        sliderInput("period_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
+        sliderInput("period_beta", "Inverse-Gamma beta:", 1, 15, 1),
+        actionButton("draw_period", "Draw New Period")),
+        plotOutput("plot_period", height = "250px")
+        )
       )
     }
   })
   
-  output$dynamic_nu_choice <- renderUI({
+  output$dynamic_roughness_choice <- renderUI({
     if (input$kernel_label == "Matérn") {
       card(
         card_header("Hyperparameters for roughness"),
-        sliderInput("nu", "Value of nu:", 0.5, 5.5, 0.5)
+        sliderTextInput("nu", "Value of roughness:", choices = c(0.5, 1.5, 2.5, 3.5),
+                        grid = TRUE, selected = 1.5)
+      )
+    }
+  })
+  #-------------------------------------------------------------------------------
+  
+  # Parameters for the second kernel
+  
+  output$dynamic_variance_2_choice <- renderUI({
+    if ( input$kernel_label %in% kernel_combinations) {
+      card(
+        card_header("Hyperparameters for variance of the second kernel"),
+        layout_columns(
+          column(width = 8, 
+                 sliderInput("variance_2_df", "Half-t degrees of freedom:", 1, 5, 4),
+                 sliderInput("variance_2_scale", "Half-t scale:", 1, 15, 1),
+                 actionButton("draw_variance_2", "Draw New Variance"))
+          ,plotOutput("plot_variance_2", height = "250px")
+        )
+      )
+    }
+  })  
+  
+  output$dynamic_length_scale_2_choice <- renderUI({
+    if (input$kernel_label %in% kernel_combinations) {#! different condition
+      card(
+        card_header("Hyperparameters for length scale of the second kernel"),
+        layout_columns(
+          column(width = 8,
+                 sliderInput("length_scale_2_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
+                 sliderInput("length_scale_2_beta", "Inverse-Gamma beta:", 1, 15, 1),
+                 actionButton("draw_length_scale_2", "Draw New Length Scale")),
+          plotOutput("plot_length_scale_2", height = "250px")
+        )
       )
     }
   })
   
-  output$dynamic_ls_plot <- renderUI({
-    if (input$kernel_label != "Linear") {
-      card(plotOutput("plot_ig", height = "250px"))
-    }
+  output$dynamic_period_2_choice <- renderUI({
+    # !
+    # if (input$kernel_label == "Periodic" | input$kernel_label == "Per * SE"| input$kernel_label == "Per + SE") {
+    #   card(
+    #     card_header("Hyperparameters for period of the second kernel"),
+    #     layout_columns(
+    #       column(width = 8,
+    #              sliderInput("period_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
+    #              sliderInput("period_beta", "Inverse-Gamma beta:", 1, 15, 1),
+    #              actionButton("draw_period", "Draw New Period")),
+    #       plotOutput("plot_period", height = "250px")
+    #     )
+    #   )
+    # }
   })
   
-  
-  output$dynamic_per_plot <- renderUI({
-    if (input$kernel_label == "Periodic" | input$kernel_label == "Per * SE"| input$kernel_label == "Per + SE") {
-      card(plotOutput("plot_ig_per", height = "250px"))
-    }
+  output$dynamic_roughness_2_choice <- renderUI({
+    # !
+    # if (input$kernel_label == "Matérn") {
+    #   card(
+    #     card_header("Hyperparameters for roughness of the second kernel"),
+    #     sliderTextInput("nu", "Value of roughness:", choices = c(0.5, 1.5, 2.5, 3.5),
+    #                     grid = TRUE, selected = 1.5)
+    #   )
+    # }
   })
   
+  output$dynamic_changepoint_location_choice <- renderUI({
+    # !
+    # if (input$kernel_label == "Matérn") {
+    #   card(
+    #     card_header("Hyperparameters for roughness of the second kernel"),
+    #     sliderTextInput("nu", "Value of roughness:", choices = c(0.5, 1.5, 2.5, 3.5),
+    #                     grid = TRUE, selected = 1.5)
+    #   )
+    # }
+  })
   
+  output$dynamic_steepness_choice <- renderUI({
+    #!
+    # if (input$kernel_label == "Matérn") {
+    #   card(
+    #     card_header("Hyperparameters for roughness of the second kernel"),
+    #     sliderTextInput("nu", "Value of roughness:", choices = c(0.5, 1.5, 2.5, 3.5),
+    #                     grid = TRUE, selected = 1.5)
+    #   )
+    # }
+  })
   #-------------------------------------------------------------------------------
   ## Reactive events
   
   # drawing length scale on button click
   length_scale_draw <- eventReactive(input$draw_length_scale, { 
-    seed_val <- digest(list(input$ls_ig_alpha, input$ls_ig_beta), algo="xxhash32", serialize=TRUE) |> 
+    seed_val <- digest(list(input$length_scale_alpha, input$length_scale_beta), algo="xxhash32", serialize=TRUE) |> 
       substr(1,7) |> strtoi(base=16)
     set.seed(seed_val)
     
     rv$ls <- TRUE
-    ls <- inverse_gamma(alpha = input$ls_ig_alpha, beta = input$ls_ig_beta)
+    ls <- inverse_gamma(alpha = input$length_scale_alpha, beta = input$length_scale_beta)
     length_scale(ls)
   })
   
   # drawing period on button click
   period_draw <- eventReactive(input$draw_period, { 
-    seed_val <- digest(list(input$per_ig_alpha, input$per_ig_beta), algo="xxhash32", serialize=TRUE) |> 
+    seed_val <- digest(list(input$period_alpha, input$period_beta), algo="xxhash32", serialize=TRUE) |> 
       substr(1,7) |> strtoi(base=16)
     set.seed(seed_val)
     
     rv$per <- TRUE
-    per <- inverse_gamma(alpha = input$per_ig_alpha, beta = input$per_ig_beta)
+    per <- inverse_gamma(alpha = input$period_alpha, beta = input$period_beta)
     period(per)
   })
   
   # drawing variance on button click
   variance_draw <- eventReactive(input$draw_variance, {
-    seed_val <- digest(list(input$ht_df, input$ht_scale), algo="xxhash32", serialize=TRUE) |> 
+    seed_val <- digest(list(input$variance_df, input$variance_scale), algo="xxhash32", serialize=TRUE) |> 
       substr(1,7) |> strtoi(base=16)
     set.seed(seed_val)
     
     rv$var <- TRUE
-    var <- half_t(df = input$ht_df, scale = input$ht_scale)
+    var <- half_t(df = input$variance_df, scale = input$variance_scale)
     variance(var) 
   })
   
@@ -400,7 +481,7 @@ server <- function(input, output) {
     len <- length_scale()
     var <- variance()
     per <- period()
-    ro <- input$nu
+    ro <- as.numeric(input$nu)
     old_params <- last_params()
     old_pool   <- last_pool()
     
@@ -418,7 +499,7 @@ server <- function(input, output) {
       return(old_pool)
     }
     
-    x_orig <- seq(x_min, x_max, length.out = n_points)
+    x_orig <- seq(input$x_range[1], input$x_range[2], length.out = input$n_points)
     
     kernel_params <- hash(
       "variance" = var
@@ -447,7 +528,7 @@ server <- function(input, output) {
     idx <- 1:input$nfunc
     idx <- idx[idx <= 100]   # safety
     
-    x_new <- seq(x_min, x_max, length.out = n_points)
+    x_new <- seq(input$x_range[1], input$x_range[2], length.out = input$n_points)
     
     funcs_interp <- apply(gp_pool()$funcs[, idx, drop=FALSE], 2, function(f) {
       approx(gp_pool()$x_orig, f, xout = x_new)$y
@@ -468,12 +549,12 @@ server <- function(input, output) {
   ## plots
   
   # Inverse-Gamma prior for length_scale plot
-  output$plot_ig <- renderPlot({
+  output$plot_length_scale <- renderPlot({
     observe(length_scale_draw())
     
     x_seq <- seq(1e-6, 15, length.out = 400)
-    alpha <- input$ls_ig_alpha
-    beta  <- input$ls_ig_beta
+    alpha <- input$length_scale_alpha
+    beta  <- input$length_scale_beta
     
     dens <- inverse_gamma(alpha = alpha, beta = beta, x = x_seq) 
     d <- data.frame(x=x_seq, y=dens)
@@ -500,12 +581,12 @@ server <- function(input, output) {
   })
   
   # Half-t prior for variance plot
-  output$plot_ht <- renderPlot({
+  output$plot_variance <- renderPlot({
     observe(variance_draw())
     
     x_seq <- seq(0, 15, length.out = 400)
-    df <- input$ht_df
-    sc <- input$ht_scale
+    df <- input$variance_df
+    sc <- input$variance_scale
     
     dens <- half_t(df = df, scale = sc, x = x_seq)
 
@@ -534,12 +615,12 @@ server <- function(input, output) {
   })
   
   # Inverse-Gamma prior for period plot
-  output$plot_ig_per <- renderPlot({
+  output$plot_period <- renderPlot({
     observe(period_draw())
 
     x_seq <- seq(1e-6, 15, length.out = 400)
-    alpha <- input$per_ig_alpha
-    beta  <- input$per_ig_beta
+    alpha <- input$period_alpha
+    beta  <- input$period_beta
 
     dens <- inverse_gamma(alpha = alpha, beta = beta, x = x_seq) 
     d <- data.frame(x=x_seq, y=dens)
@@ -577,7 +658,7 @@ server <- function(input, output) {
       "variance" = variance()
       ,"length_scale" = length_scale()
       ,"period" = period()
-      ,"roughness" = input$nu
+      ,"roughness" = as.numeric(input$nu)
     )
     
     k <- kernel_wrapper(input$kernel_label, dist, x_o, kernel_params)[,1]
