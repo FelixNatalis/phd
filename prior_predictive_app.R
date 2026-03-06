@@ -61,6 +61,22 @@ periodic_kernel <- function(x1, x2, variance, length_scale, period) {
   )
 }
 
+# Periodic * squared exponential kernel function
+per_and_se_kernel <- function(x1, x2, variance, length_scale, period) {
+  outer(x1, x2, function(a, b)
+    (variance^2 * exp(-2 * sin(pi * abs(a - b) / period)^2 / length_scale^2)) * 
+      (variance^2 * exp(-(a - b)^2 / (2 * length_scale^2)))
+  )
+}
+
+# Periodic + squared exponential kernel function
+per_or_se_kernel <- function(x1, x2, variance, length_scale, period) {
+  outer(x1, x2, function(a, b)
+    (variance^2 * exp(-2 * sin(pi * abs(a - b) / period)^2 / length_scale^2)) + 
+      (variance^2 * exp(-(a - b)^2 / (2 * length_scale^2)))
+  )
+}
+
 kernels <- hash(
   "Squared Exponential" = squared_exponential_kernel
   ,"Matérn" = matern_kernel
@@ -68,13 +84,13 @@ kernels <- hash(
   ,"Periodic" = periodic_kernel
   )
 
-# kernel_combinations = hash(
-#           "Changepoint" = 5,
-#           "Lin + SE" = 6,
-#           "Lin * SE" = 7,
-#           "Per + SE" = 8,
-#           "Per * SE" = 9
-# )
+kernel_combinations = hash(
+          #"Changepoint" = 5,
+          #"Lin + SE" = 6,
+          #"Lin * SE" = 7,
+          "Per + SE" = per_or_se_kernel,
+          "Per * SE" = per_and_se_kernel
+)
 
 kernel_wrapper <- function(kernel_label, x1, x2, params){ 
   variance = params[["variance"]]
@@ -103,6 +119,18 @@ kernel_wrapper <- function(kernel_label, x1, x2, params){
   if(kernel_label == "Periodic"){
     if(!invalid(x1) & !invalid(x2) & !invalid(variance) & !invalid(length_scale) & !invalid(period)){
       return(periodic_kernel(x1 = x1, x2 = x2, variance = variance, length_scale = length_scale, period = period))
+    }
+  }
+  
+  if(kernel_label == "Per * SE"){
+    if(!invalid(x1) & !invalid(x2) & !invalid(variance) & !invalid(length_scale) & !invalid(period)){
+      return(per_and_se_kernel(x1 = x1, x2 = x2, variance = variance, length_scale = length_scale, period = period))
+    }
+  }
+  
+  if(kernel_label == "Per + SE"){
+    if(!invalid(x1) & !invalid(x2) & !invalid(variance) & !invalid(length_scale) & !invalid(period)){
+      return(per_or_se_kernel(x1 = x1, x2 = x2, variance = variance, length_scale = length_scale, period = period))
     }
   }
 }
@@ -180,8 +208,7 @@ ui <- page_fillable(
             card( 
               card_header("Kernel", style='padding:4px; font-size:80%'),
               selectInput("kernel_label", "Choose a kernel:",
-                          list(`Simple kernels` = keys(kernels)
-                               #, `Kernel combinations` = keys(kernel_combinations)
+                          list(`Simple kernels` = keys(kernels), `Kernel combinations` = keys(kernel_combinations)
                           )),
               actionButton("draw_kernel", "Draw kernel")
             ), 
@@ -253,7 +280,7 @@ server <- function(input, output) {
     if (input$kernel_label == "Linear" && rv$var) {
       shinyjs::enable("draw_kernel")
       
-    } else if (input$kernel_label == "Periodic" &&
+    } else if ((input$kernel_label == "Periodic" | input$kernel_label == "Per * SE"| input$kernel_label == "Per + SE") &&
                rv$var && rv$ls && rv$per) {
       shinyjs::enable("draw_kernel")
       
@@ -283,7 +310,7 @@ server <- function(input, output) {
   })
   
   output$dynamic_per_choice <- renderUI({
-    if (input$kernel_label == "Periodic") {
+    if (input$kernel_label == "Periodic" | input$kernel_label == "Per * SE"| input$kernel_label == "Per + SE") {
       card(
         card_header("Hyperparameters for period"),
         sliderInput("per_ig_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
@@ -310,7 +337,7 @@ server <- function(input, output) {
   
   
   output$dynamic_per_plot <- renderUI({
-    if (input$kernel_label == "Periodic") {
+    if (input$kernel_label == "Periodic" | input$kernel_label == "Per * SE"| input$kernel_label == "Per + SE") {
       card(plotOutput("plot_ig_per", height = "250px"))
     }
   })
