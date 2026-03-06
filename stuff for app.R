@@ -25,3 +25,18 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
+
+# role <- reactive({
+#   input$kernel_label
+# })
+# 
+# observeEvent(role(), {
+#   if (role() %in% c("Periodic")) {
+#     nav_show("nav", "C")
+#   } else if (role() == "Linear") {
+#     nav_hide("nav", "C")
+#   } else {
+#     stop(sprintf("user has unexpected role %s", role()))
+#   }
+# })

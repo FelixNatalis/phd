@@ -203,50 +203,63 @@ ui <- page_fillable(
   }"),
   
   useShinyjs(),
-  layout_columns(
-    card( "Parameters",
-            card( 
-              card_header("Kernel", style='padding:4px; font-size:80%'),
-              selectInput("kernel_label", "Choose a kernel:",
-                          list(`Simple kernels` = keys(kernels), `Kernel combinations` = keys(kernel_combinations)
-                          )),
-              actionButton("draw_kernel", "Draw kernel")
-            ), 
-            
-          card(
-            card_header("Hyperparameters for variance"),
-            # sliderInput("ht_mu", "Half-t mean:", 0, 15, 0),
-            sliderInput("ht_df", "Half-t degrees of freedom:", 1, 5, 4),
-            sliderInput("ht_scale", "Half-t scale:", 1, 15, 1),
-           # checkboxInput("variance_mle", "Use MLE", FALSE),
-            actionButton("draw_variance", "Draw New Variance"),
+  navset_tab( 
+    nav_panel("Kernel", 
+              
+              card( "Parameters",
+                    card( 
+                      card_header("Kernel", style='padding:4px; font-size:80%'),
+                      selectInput("kernel_label", "Choose a kernel:",
+                                  list(`Simple kernels` = keys(kernels), `Kernel combinations` = keys(kernel_combinations)
+                                  )),
+                      actionButton("draw_kernel", "Draw kernel")
+                    ), 
+                    
+                    card(
+                      card_header("Hyperparameters for variance"),
+                      layout_columns(
+                        card(
+                        sliderInput("ht_df", "Half-t degrees of freedom:", 1, 5, 4),
+                      sliderInput("ht_scale", "Half-t scale:", 1, 15, 1)),
+                        card(plotOutput("plot_ht", height = "250px"))
+                      ),
+                      # sliderInput("ht_mu", "Half-t mean:", 0, 15, 0),
+                      
+                      # checkboxInput("variance_mle", "Use MLE", FALSE),
+                      actionButton("draw_variance", "Draw New Variance")
+                      
+                    ),
+                    uiOutput("dynamic_ls_choice"),
+                    uiOutput("dynamic_nu_choice"),
+                    uiOutput("dynamic_per_choice"),
+                    layout_columns(
+                      
+                      uiOutput("dynamic_ls_plot"),
+                      uiOutput("dynamic_per_plot"),
+                      
+                      card(plotOutput("kernelPlot", height = "250px"))
+                    )
+              )
+              
+              
+              ), 
+    nav_panel("GP", 
+              
+              card(
 
-          ),
-          uiOutput("dynamic_ls_choice"),
-          uiOutput("dynamic_nu_choice"),
-          uiOutput("dynamic_per_choice"),
-          card(
-            card_header("Other parameters"),
-            #sliderInput("sigma_n", "Noise amplitude:", 0, 15, 1),
-            sliderInput("nfunc", "Number of Functions:", 1, n_functions, 3),
-            #sliderInput("n_points", "Number of X Points:", 20, 400, 200),
-            #sliderInput("x_max", "X Range:", 2, 20, 10),
-            disabled(actionButton("draw_gp", "Draw GP"))
-          )
-    ),
-    card(
-      layout_columns(
-        card(plotOutput("plot_ht", height = "250px")),
-        uiOutput("dynamic_ls_plot"),
-        uiOutput("dynamic_per_plot"),
-        
-        card(plotOutput("kernelPlot", height = "250px"))
-      ),
-      card(plotOutput("gpPlot", height = "600px"))
-      
-    ),
- col_widths = c(2, 10) 
-  )
+                card(
+                  card_header("Other parameters"),
+                  #sliderInput("sigma_n", "Noise amplitude:", 0, 15, 1),
+                  sliderInput("nfunc", "Number of Functions:", 1, n_functions, 3),
+                  #sliderInput("n_points", "Number of X Points:", 20, 400, 200),
+                  #sliderInput("x_max", "X Range:", 2, 20, 10),
+                  disabled(actionButton("draw_gp", "Draw GP"))
+                ),
+                card(plotOutput("gpPlot", height = "600px"))
+                
+              ),
+              ), 
+    id = "nav"),
 )
 
 #-------------------------------------------------------------------------------
@@ -341,6 +354,7 @@ server <- function(input, output) {
       card(plotOutput("plot_ig_per", height = "250px"))
     }
   })
+  
   
   #-------------------------------------------------------------------------------
   ## Reactive events
