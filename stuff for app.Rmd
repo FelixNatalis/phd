@@ -361,12 +361,12 @@ x_seq <- seq(0, 15, length.out = 400)
 #_________________________________________________________________________________________________
 
 ```{r}
-#pkgbuild::has_rtools()
-#install.packages("https://cran.r-project.org/src/contrib/Archive/tmg/tmg_0.3.tar.gz",repos = NULL,type = "source")
-#install.packages("https://cran.r-project.org/src/contrib/Archive/restrictedMVN/restrictedMVN_1.0.tar.gz",repos = NULL,type = "source")
-#install.packages("C:/Users/margo/Downloads/lineqGPR_0.0.3.tar.gz",repos = NULL,type = "source")
-# install.packages("rlang")
-#install.packages(c("DiceKriging", "DiceDesign", "Matrix", "tmvtnorm"))
+pkgbuild::has_rtools()
+install.packages("https://cran.r-project.org/src/contrib/Archive/tmg/tmg_0.3.tar.gz",repos = NULL,type = "source")
+install.packages("https://cran.r-project.org/src/contrib/Archive/restrictedMVN/restrictedMVN_1.0.tar.gz",repos = NULL,type = "source")
+install.packages("C:/Users/zubareva/Downloads/lineqGPR_0.3.0.tar.gz",repos = NULL,type = "source")
+ install.packages("rlang")
+install.packages(c("DiceKriging", "DiceDesign", "Matrix", "tmvtnorm"))
 
 library("lineqGPR")
 
@@ -475,13 +475,18 @@ DoE <- splitDoE(x, y, DoE.idx = c(201, 501, 801))
 #### GP with boundedness and monotonicity constraints ####
 # creating the "lineqGP" model
 model <- create(class = "lineqGP", x = DoE$xdesign, y = DoE$ydesign,
-                constrType = c("boundedness","monotonicity"))
+                constrType = c("boundedness"))#,"monotonicity"))
 model$localParam$m <- 50
 model$bounds[1, ] <- c(0,1)
+model$kernParam$type = "gaussian"
+model$kernParam$par<- c( 1, 0.1)
+                    
+#model$kernParam$type<-"gaussian"
+#model$kernParam$par<-c(1, 1)
 model <- augment(model)
 
 # sampling from the model
-sim.model <- simulate(model, nsim = 1e2, seed = 1, xtest = DoE$xtest)
+sim.model <- simulate(model, nsim = 5, seed = 1, xtest = DoE$xtest)
 plot(sim.model, bounds = model$bounds,
      xlab = "x", ylab = "y(x)", ylim = range(y),
      main = "Constrained GP model under boundedness & monotonicity conditions")
@@ -546,5 +551,221 @@ legend("bottomright", c("ytrain","ytest","mean","confidence"),
 ## 2. See also the examples from inner functions of the package
 ## (run: help("simulate.lineqGP")).
 ## ------------------------------------------------------------------
+```
+
+```{r}
+# creating the model
+sigfun <- function(x) return(1/(1+exp(-7*(x-0.5))))
+x <- seq(0, 1, length = 5)
+y <- sigfun(x)
+model <- create(class = "lineqGP", x, y, constrType = "monotonicity", m = 30)
+
+# modifying the covariance parameters
+model$kernParam$par <- c(15, 0.2)
+
+# sampling from the model
+xtest <- seq(0, 1, length = 100)
+ytest <- sigfun(xtest)
+sim.model <- simulate(model, xtest, nsim = 50, seed = 1)
+mu <- apply(sim.model$ysim, 1, mean)
+qtls <- apply(sim.model$ysim, 1, quantile, probs = c(0.05, 0.95))
+matplot(xtest, t(qtls), type = "l", lty = 1, col = "gray90",
+        main = "Constrained Kriging model")
+polygon(c(xtest, rev(xtest)), c(qtls[2,], rev(qtls[1,])), col = "gray90", border = NA)
+lines(xtest, ytest, lty = 2)
+lines(xtest, mu, type = "l", col = "darkgreen")
+points(x, y, pch = 20)
+legend("right", c("ytrain", "ytest", "mean", "confidence"), lty = c(NaN,2,1,NaN),
+       pch = c(20,NaN,NaN,15), col = c("black", "black", "darkgreen", "gray80"))
+```
+```{r}
+# creating the model
+sigfun <- function(x) return(1/(1+exp(-7*(x-0.5))))
+x <- seq(0, 1, length = 5)
+y <- sigfun(x)
+model <- create(class = "lineqGP", x, y, constrType = "monotonicity", m = 30)
+
+# modifying the covariance parameters
+model$kernParam$par <- c(1, 0.2)
+
+# predictions from the model
+xtest <- seq(0, 1, length = 100)
+ytest <- sigfun(xtest)
+pred <- predict(model, xtest)
+plot(xtest, ytest, type = "l", lty = 2, main = "Kriging predictions")
+lines(xtest, pred$Phi.test %*% pred$mu, type = "l", col = "blue")
+lines(xtest, pred$Phi.test %*% pred$xi.map, type = "l", col = "red")
+legend("right", c("ytest", "mean", "mode"), lty = c(2,1,1),
+       col = c("black", "blue", "red"))
+```
+
+```{r}
+# creating the model
+sigfun <- function(x) return(1/(1+exp(-7*(x-0.5))))
+x <- seq(0, 1, length = 5)
+y <- sigfun(x)
+model <- create(class = "lineqGP", x, y, constrType = "monotonicity")
+
+# updating and expanding the model
+model$localParam$m <- 30
+model$kernParam$par <- c(1, 0.2)
+model2 <- augment(model)
+image(model2$Gamma, main = "covariance matrix")
+
+image(model$Gamma, main = "covariance matrix")
+```
+
+```{r}
+x <- seq(0, 1, 0.01)
+K <- kernCompute(x, type = "gaussian", par =  c(1, 0.1))
+image(K, main = "covariance matrix")
+```
+```{r}
+x <- seq(0, 1, 0.01)
+K <- kernCompute(x, type = "exponential", par =  c(1, 0.1))
+image(K, main = "covariance matrix")
+```
+
+```{r}
+x <- seq(0, 1, 0.01)
+K <- kernCompute(x, type = "matern32", par =  c(1, 0.1))
+image(K, main = "covariance matrix")
+```
+
+```{r}
+## ------------------------------------------------------------------
+## Gaussian process regression modelling under multiple constraints WITH DIFFERENT KERNELS
+## ------------------------------------------------------------------
+library(lineqGPR)
+
+#### generating the synthetic data ####
+sigfun <- function(x) return(1/(1+exp(-7*(x-0.5))))
+x <- seq(0, 1, 0.001)
+y <- sigfun(x)
+DoE <- splitDoE(x, y, DoE.idx = c(201, 501, 801))
+
+#### GP with boundedness and monotonicity constraints ####
+# creating the "lineqGP" model
+model <- create(class = "lineqGP", x = DoE$xdesign, y = DoE$ydesign,
+                constrType = c("boundedness","monotonicity"))
+model$localParam$m <- 50
+model$bounds[1, ] <- c(0,1)
+model$kernParam$type <- "matern32"
+model$kernParam$par <- c(0.5, 0.01)
+model <- augment(model)
+
+# sampling from the model
+sim.model <- simulate(model, nsim = 1e2, seed = 1, xtest = DoE$xtest)
+plot(sim.model, bounds = model$bounds,
+     xlab = "x", ylab = "y(x)", ylim = range(y),
+     main = "Constrained GP model under boundedness & monotonicity conditions")
+lines(x, y, lty = 2)
+legend("topleft", c("ytrain","ytest","mean","confidence"),
+       lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
+       col = c("black","black","darkgreen","gray80"))
+```
+
+```{r}
+## ------------------------------------------------------------------
+## Gaussian process regression modelling under multiple constraints WITH DIFFERENT KERNELS
+## ------------------------------------------------------------------
+library(lineqGPR)
+
+#### generating the synthetic data ####
+sigfun <- function(x) return(1/(1+exp(-7*(x-0.5))))
+x <- seq(0, 1, 0.001)
+y <- sigfun(x)
+DoE <- splitDoE(x, y, DoE.idx = c(201, 501, 801))
+
+#### GP with boundedness and monotonicity constraints ####
+# creating the "lineqGP" model
+model <- create(class = "lineqGP", x = DoE$xdesign, y = DoE$ydesign,
+                constrType = c("boundedness","monotonicity"))
+model$localParam$m <- 50
+model$bounds[1, ] <- c(0,1)
+model$kernParam$type <- "matern52"
+model$kernParam$par <- c(0.5, 0.1)
+model <- augment(model)
+
+# sampling from the model
+sim.model <- simulate(model, nsim = 5, seed = 1, xtest = DoE$xtest)
+plot(sim.model, bounds = model$bounds,
+     xlab = "x", ylab = "y(x)", ylim = range(y),
+     main = "Constrained GP model under boundedness & monotonicity conditions")
+lines(x, y, lty = 2)
+legend("topleft", c("ytrain","ytest","mean","confidence"),
+       lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
+       col = c("black","black","darkgreen","gray80"))
+```
+
+
+```{r}
+## ------------------------------------------------------------------
+## Gaussian process regression modelling under multiple constraints WITH DIFFERENT KERNELS
+## ------------------------------------------------------------------
+library(lineqGPR)
+
+#### generating the synthetic data ####
+sigfun <- function(x) return(1/(1+exp(-7*(x-0.5))))
+x <- seq(0, 1, 0.001)
+y <- sigfun(x)
+DoE <- splitDoE(x, y, DoE.idx = c(201, 501, 801))
+
+#### GP with boundedness and monotonicity constraints ####
+# creating the "lineqGP" model
+model <- create(class = "lineqGP", x = DoE$xdesign, y = DoE$ydesign,
+                constrType = c("boundedness","monotonicity"))
+model$localParam$m <- 50
+model$bounds[1, ] <- c(0,1)
+model$kernParam$type <- "exponential"
+model$kernParam$par <- c(0.1, 2.5)
+model <- augment(model)
+
+# sampling from the model
+sim.model <- simulate(model, nsim = 5, seed = 1, xtest = DoE$xtest)
+plot(sim.model, bounds = model$bounds,
+     xlab = "x", ylab = "y(x)", ylim = range(y),
+     main = "Constrained GP model under boundedness & monotonicity conditions")
+lines(x, y, lty = 2)
+legend("topleft", c("ytrain","ytest","mean","confidence"),
+       lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
+       col = c("black","black","darkgreen","gray80"))
+```
+
+
+```{r}
+## ------------------------------------------------------------------
+## Gaussian process regression modelling under multiple constraints WITHOUT DATA
+## ------------------------------------------------------------------
+library(lineqGPR)
+
+#### generating the synthetic data ####
+sigfun <- function(x) return(1/(1+exp(-7*(x-0.5))))
+x <- c(0.1, 0.101)
+y <- sigfun(x)
+#DoE <- splitDoE(x, y, DoE.idx = c(201, 501, 801))
+
+#### GP with boundedness and monotonicity constraints ####
+# creating the "lineqGP" model
+model <- create(class = "lineqGP", x = x, y = y,#DoE$ydesign,
+                constrType = c("boundedness","monotonicity"))
+model$localParam$m <- 50
+model$bounds[1, ] <- c(0,1)
+model$kernParam$type = "gaussian"
+model$kernParam$par<- c( 2, 0.14)
+                    
+#model$kernParam$type<-"gaussian"
+#model$kernParam$par<-c(1, 1)
+model <- augment(model)
+
+# sampling from the model
+sim.model <- simulate(model, nsim = 5, seed = 1, xtest = seq(0, 1, 0.01))
+plot(sim.model, bounds = model$bounds,
+     xlab = "x", ylab = "y(x)", ylim = range(0, 1),
+     main = "Constrained GP model under boundedness & monotonicity conditions")
+lines(x, y, lty = 2)
+legend("topleft", c("ytrain","ytest","mean","confidence"),
+       lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
+       col = c("black","black","darkgreen","gray80"))
 ```
 
