@@ -768,4 +768,56 @@ legend("topleft", c("ytrain","ytest","mean","confidence"),
        lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
        col = c("black","black","darkgreen","gray80"))
 ```
+```{r}
+x1 <- seq(-1, 1, length.out = 5)
+variance_1 = 1
+variance_2 = 2
+length_scale_1 = 2
+length_scale_2 = 3
+period = 4
+```
+
+```{r}
+
+outer(x1, x1, function(a, b)
+    (variance_1^2 * exp(-2 * sin(pi * abs(a - b) / period)^2 / length_scale_1^2)) *
+      (variance_2^2 * exp(-(a - b)^2 / (2 * length_scale_2^2)))
+  )
+```
+
+```{r}
+outer(x1, x1, function(a, b)
+    (variance_1^2 * exp(-2 * sin(pi * abs(a - b) / period)^2 / length_scale_1^2))
+  ) +
+  outer(x1, x1, function(a, b)
+    (variance_2^2 * exp(-(a - b)^2 / (2 * length_scale_2^2)))
+  )
+```
+```{r}
+
+
+  K <- outer(x1, x1, function(a, b)
+    (variance_1^2 * exp(-2 * sin(pi * abs(a - b) / period)^2 / length_scale_1^2))
+  ) +
+  outer(x1, x1, function(a, b)
+    (variance_2^2 * exp(-(a - b)^2 / (2 * length_scale_2^2)))
+  ) 
+  L <- chol(K + 1e-4 * diag(length(x)))
+  f <- t(L) %*% rnorm(length(x))
+  
+  # noise
+  eps <- 1e-3 * rnorm(length(x))
+  
+y<-  drop(f + eps)
+d<-data.frame("x" = x, "y" = y)
+```
+
+```{r}
+ggplot(data = d, aes(x=x, y=y, )) +
+      geom_line(alpha=0.9, linewidth=1) +
+      scale_color_discrete(guide="none") +
+      labs(title="Gaussian Process Prior Samples",
+           x="x", y="f(x)") +
+      theme_minimal(base_size=16)
+```
 
