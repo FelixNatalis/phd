@@ -61,35 +61,10 @@ periodic_kernel <- function(x1, x2, variance, length_scale, period) {
   )
 }
 
-# # Periodic * squared exponential kernel function
-# per_and_se_kernel <- function(x1, x2, variance_1, length_scale_1, period, variance_2, length_scale_2) {
-#   return(periodic_kernel(x1, x2, variance = variance_1, length_scale = length_scale_1, period = period)*
-#     squared_exponential_kernel(x1, x2, variance = variance_2, length_scale = length_scale_2))
-#   # outer(x1, x2, function(a, b)
-#   #   (variance_1^2 * exp(-2 * sin(pi * abs(a - b) / period)^2 / length_scale_1^2)) * 
-#   #     (variance_2^2 * exp(-(a - b)^2 / (2 * length_scale_2^2)))
-#   # )
-# }
-# 
-# # Periodic + squared exponential kernel function
-# per_or_se_kernel <- function(x1, x2, variance_1, length_scale_1, period, variance_2, length_scale_2) {
-#   return(periodic_kernel(x1, x2, variance = variance_1, length_scale = length_scale_1, period = period)+
-#            squared_exponential_kernel(x1, x2, variance = variance_2, length_scale = length_scale_2))
-# }
+kernels <- c("Squared Exponential", "Matérn", "Linear", "Periodic")
 
-kernels <- hash(
-  "Squared Exponential" = squared_exponential_kernel
-  ,"Matérn" = matern_kernel
-  ,"Linear" = linear_kernel
-  ,"Periodic" = periodic_kernel
-  )
-
-kernel_combinations = hash(
-          #"Changepoint" = 5,
-          #"Lin + SE" = 6,
-          #"Lin * SE" = 7,
-          "Per + SE" = 3,
-          "Per * SE" = 3
+kernel_combinations = c(#"Changepoint", "Lin + SE", "Lin * SE",
+          "Per + SE", "Per * SE", "Per + Lin", "Per * Lin"
 )
 
 kernel_wrapper <- function(kernel_label, x1, x2, params){ 
@@ -126,8 +101,6 @@ kernel_wrapper <- function(kernel_label, x1, x2, params){
     if(!invalid(x1) & !invalid(x2) 
        & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
        & !invalid(variance[2]) & !invalid(length_scale[2])){
-      # return(per_and_se_kernel(x1 = x1, x2 = x2, variance_1 = variance[1], length_scale_1 = length_scale[1], period = period, 
-      #                           variance_2 = variance[2], length_scale_2 = length_scale[2]))
       return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)*
         squared_exponential_kernel(x1 = x1, x2 = x2, variance = variance[2], length_scale = length_scale[2]))
     }
@@ -139,6 +112,24 @@ kernel_wrapper <- function(kernel_label, x1, x2, params){
        & !invalid(variance[2]) & !invalid(length_scale[2])){
       return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)+
                squared_exponential_kernel(x1 = x1, x2 = x2, variance = variance[2], length_scale = length_scale[2]))
+    }
+  }
+  
+  if(kernel_label == "Per * Lin"){
+    if(!invalid(x1) & !invalid(x2) 
+       & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
+       & !invalid(variance[2])){
+      return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)*
+               linear_kernel(x1 = x1, x2 = x2, variance = variance[2]))
+    }
+  }
+  
+  if(kernel_label == "Per + Lin"){
+    if(!invalid(x1) & !invalid(x2) 
+       & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
+       & !invalid(variance[2])){
+      return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)+
+               linear_kernel(x1 = x1, x2 = x2, variance = variance[2]))
     }
   }
 }
@@ -219,13 +210,12 @@ ui <- page_fillable(
                       layout_columns(
                         column(width = 8,
                           selectInput("kernel_label", "Choose a kernel:",
-                                      list(`Simple kernels` = keys(kernels), 
-                                           `Kernel combinations` = keys(kernel_combinations))),
+                                      list(`Simple kernels` = kernels, 
+                                           `Kernel combinations` = kernel_combinations)),
                           actionButton("draw_kernel", "Draw kernel")),
                         plotOutput("kernelPlot", height = "250px")
                       )
                     ), 
-                    
                     card(
                       card_header("Hyperparameters for variance"),
                       layout_columns(
@@ -247,23 +237,17 @@ ui <- page_fillable(
                     uiOutput("dynamic_steepness_choice"),#!
               )), 
     nav_panel("GP", 
-              
               card(
-
                 card(
                   card_header("Other parameters"),
                   #sliderInput("sigma_n", "Noise amplitude:", 0, 15, 1),
                   sliderInput("nfunc", "Number of Functions:", 1, n_functions, 3),
                   sliderInput("n_points", "Number of X Points:", value = n_points, min = 2, max = 400),
                   sliderInput("x_range", "x range", min = -100, max = 100, value = c(x_min, x_max)), 
-                  #sliderInput("x_range", "X Range:", 2, 20, 10),
-                  #sliderInput("x_max", "X Range:", 2, 20, 10),
                   disabled(actionButton("draw_gp", "Draw GP"))
                 ),
                 card(plotOutput("gpPlot", height = "600px"))
-                
-              ),
-              ), 
+              ),), 
     id = "nav"),
 )
 
@@ -299,10 +283,10 @@ server <- function(input, output) {
   #-------------------------------------------------------------------------------
   ## Dynamic ui elements 
   
-  shinyjs::disable("draw_kernel")
+ # shinyjs::disable("draw_kernel")
   
   observe({
-    if (input$kernel_label == "Linear" && rv$var) {
+    if (input$kernel_label == "Linear" && rv$var || input$kernel_label == "Per + Lin") { # TODO
       shinyjs::enable("draw_kernel")
       
     } else if ((input$kernel_label == "Periodic" | input$kernel_label == "Per * SE"| input$kernel_label == "Per + SE") &&
@@ -324,7 +308,7 @@ server <- function(input, output) {
   
   
   output$dynamic_length_scale_choice <- renderUI({
-    if (input$kernel_label != "Linear") {
+    if (!(input$kernel_label %in% c("Linear", "Lin + Lin", "Lin * Lin"))) {
       card(
         card_header("Hyperparameters for length scale"),
         layout_columns(
@@ -339,7 +323,7 @@ server <- function(input, output) {
   })
   
   output$dynamic_period_choice <- renderUI({
-    if (input$kernel_label == "Periodic" || input$kernel_label == "Per + SE" || input$kernel_label == "Per * SE" ) {
+    if (grepl("Per", input$kernel_label)) {
       card(
         card_header("Hyperparameters for period"),
         layout_columns(
@@ -354,7 +338,7 @@ server <- function(input, output) {
   })
   
   output$dynamic_roughness_choice <- renderUI({
-    if (input$kernel_label == "Matérn") {
+    if (grepl("Mat",input$kernel_label) && !grepl("Per",input$kernel_label)) {
       card(
         card_header("Hyperparameters for roughness"),
         sliderTextInput("nu", "Value of roughness:", choices = c(0.5, 1.5, 2.5, 3.5),
@@ -368,7 +352,7 @@ server <- function(input, output) {
   
   output$dynamic_variance_2_choice <- renderUI({
     
-    if (has.key(input$kernel_label , kernel_combinations)) {
+    if (input$kernel_label %in% kernel_combinations) {
       card(
         card_header("Hyperparameters for variance of the second kernel"),
         layout_columns(
@@ -383,7 +367,7 @@ server <- function(input, output) {
   })  
   
   output$dynamic_length_scale_2_choice <- renderUI({
-    if (has.key(input$kernel_label , kernel_combinations)) {#! different condition
+    if ((input$kernel_label %in% kernel_combinations) && !grepl("Lin",input$kernel_label)) {#! different condition
       card(
         card_header("Hyperparameters for length scale of the second kernel"),
         layout_columns(
@@ -398,22 +382,31 @@ server <- function(input, output) {
   })
   
   output$dynamic_period_2_choice <- renderUI({
-    # !
-    # if (input$kernel_label == "Periodic" | input$kernel_label == "Per * SE"| input$kernel_label == "Per + SE") {
-    #   card(
-    #     card_header("Hyperparameters for period of the second kernel"),
-    #     layout_columns(
-    #       column(width = 8,
-    #              sliderInput("period_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
-    #              sliderInput("period_beta", "Inverse-Gamma beta:", 1, 15, 1),
-    #              actionButton("draw_period", "Draw New Period")),
-    #       plotOutput("plot_period", height = "250px")
-    #     )
-    #   )
-    # }
+    if (input$kernel_label %in% c("Per + Per", "Per * Per")) {
+      card(
+        card_header("Hyperparameters for period of the second kernel"),
+        layout_columns(
+          column(width = 8,
+                 sliderInput("period_2_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
+                 sliderInput("period_2_beta", "Inverse-Gamma beta:", 1, 15, 1),
+                 actionButton("draw_period_2", "Draw New Period")),
+          plotOutput("plot_period_2", height = "250px")
+        )
+      )
+    }
   })
   
   output$dynamic_roughness_2_choice <- renderUI({
+    if (input$kernel_label %in% c("Mat + Mat", "Mat * Mat")) {
+      card(
+        card_header("Hyperparameters for roughness of the second kernel"),
+        sliderTextInput("nu_2", "Value of roughness:", choices = c(0.5, 1.5, 2.5, 3.5),
+                        grid = TRUE, selected = 1.5)
+      )
+    }
+  })
+  
+  output$dynamic_changepoint_location_choice <- renderUI({ # TODO
     # !
     # if (input$kernel_label == "Matérn") {
     #   card(
@@ -424,18 +417,7 @@ server <- function(input, output) {
     # }
   })
   
-  output$dynamic_changepoint_location_choice <- renderUI({
-    # !
-    # if (input$kernel_label == "Matérn") {
-    #   card(
-    #     card_header("Hyperparameters for roughness of the second kernel"),
-    #     sliderTextInput("nu", "Value of roughness:", choices = c(0.5, 1.5, 2.5, 3.5),
-    #                     grid = TRUE, selected = 1.5)
-    #   )
-    # }
-  })
-  
-  output$dynamic_steepness_choice <- renderUI({
+  output$dynamic_steepness_choice <- renderUI({ # TODO
     #!
     # if (input$kernel_label == "Matérn") {
     #   card(
@@ -598,6 +580,31 @@ server <- function(input, output) {
   #-------------------------------------------------------------------------------
   ## plots
   
+  param_plot<- function(dataframe, title, y_label, x_label, observation_value){
+    
+    plot <- ggplot(dataframe, aes(x,y)) +
+      geom_line(color="steelblue", linewidth=1) +
+      labs(title=title,
+           y=y_label, x=x_label) +
+      theme_minimal(base_size=14)
+    
+    if(!invalid(observation_value)){
+      plot <- plot + 
+        annotate("point", x = observation_value, y = 0, colour = "red", size = 3) +
+        annotate("text",
+                 x = Inf,
+                 y = Inf,
+                 hjust = 1.1,  
+                 vjust = 1.5,
+                 label = paste0("draw = ", signif(observation_value,3)),
+                 color="red",
+                 size = 5)
+    }
+    
+    plot
+    
+  }
+  
   # Inverse-Gamma prior for length_scale plot
   output$plot_length_scale <- renderPlot({
     observe(length_scale_draw())
@@ -605,29 +612,10 @@ server <- function(input, output) {
     x_seq <- seq(1e-6, 15, length.out = 400)
     alpha <- input$length_scale_alpha
     beta  <- input$length_scale_beta
-    
-    dens <- inverse_gamma(alpha = alpha, beta = beta, x = x_seq) 
+    dens <- inverse_gamma(alpha = alpha, beta = beta, x = x_seq)
     d <- data.frame(x=x_seq, y=dens)
     
-    plot <- ggplot(d, aes(x,y)) +
-      geom_line(color="steelblue", linewidth=1) +
-      labs(title="Inverse-Gamma prior for length scale",
-           y="density", x="length scale") +
-      theme_minimal(base_size=14)
-    
-    if(!invalid(length_scale())){
-      plot <- plot + annotate("point", x = length_scale(), y = 0, colour = "red", size = 3) +
-        annotate("text",
-                 x = Inf,
-                 y = Inf,
-                 hjust = 1.1,  
-                 vjust = 1.5,
-                 label = paste0("draw = ", signif(length_scale(),3)),
-                 color="red",
-                 size = 5)
-    }
-    
-    plot
+    param_plot(d, "Inverse-Gamma prior for length scale", "density", "length scale", length_scale())
   })
   
   # Half-t prior for variance plot
@@ -637,31 +625,10 @@ server <- function(input, output) {
     x_seq <- seq(0, 15, length.out = 400)
     df <- input$variance_df
     sc <- input$variance_scale
-    
     dens <- half_t(df = df, scale = sc, x = x_seq)
-
     d <- data.frame(x=x_seq, y=dens)
     
-    plot <- ggplot(d, aes(x,y)) +
-      geom_line(color="darkgreen", linewidth=1) +
-      labs(title="Half-t prior for variance",
-           y="density", x="variance") +
-      theme_minimal(base_size=14)
-    
-    if(!invalid(variance())){
-      plot <- plot + 
-        annotate("point", x = variance(), y = 0, colour = "red", size = 3) +
-        annotate("text",
-                 x = Inf,
-                 y = Inf,
-                 hjust = 1.1,  
-                 vjust = 1.5,
-                 label = paste0("draw = ", signif(variance(),3)),
-                 color="red",
-                 size = 5)
-    }
-    
-    plot
+    param_plot(d, "Half-t prior for variance", "density", "variance", variance())
   })
   
   # Inverse-Gamma prior for period plot
@@ -675,29 +642,10 @@ server <- function(input, output) {
     dens <- inverse_gamma(alpha = alpha, beta = beta, x = x_seq) 
     d <- data.frame(x=x_seq, y=dens)
 
-    plot <- ggplot(d, aes(x,y)) +
-      geom_line(color="steelblue", linewidth=1) +
-      labs(title="Inverse-Gamma prior for period",
-           y="density", x="period") +
-      theme_minimal(base_size=14)
-    
-    if(!invalid(period())){
-      plot <- plot + 
-        annotate("point", x = period(), y = 0, colour = "red", size = 3) +
-        annotate("text",
-                 x = Inf,
-                 y = Inf,
-                 hjust = 1.1,  
-                 vjust = 1.5,
-                 label = paste0("draw = ", signif(period(),3)),
-                 color="red",
-                 size = 5)
-    }
-    
-    plot
+    param_plot(d, "Inverse-Gamma prior for period", "density", "period", period())
  })
   #-------------------------------------------------------------------------------
-  ## plots
+  ## plots for second kernel parameters
   
   # Inverse-Gamma prior for length_scale plot
   output$plot_length_scale_2 <- renderPlot({
@@ -710,25 +658,7 @@ server <- function(input, output) {
     dens <- inverse_gamma(alpha = alpha, beta = beta, x = x_seq) 
     d <- data.frame(x=x_seq, y=dens)
     
-    plot <- ggplot(d, aes(x,y)) +
-      geom_line(color="steelblue", linewidth=1) +
-      labs(title="Inverse-Gamma prior for length scale of the second kernel",
-           y="density", x="length scale") +
-      theme_minimal(base_size=14)
-    
-    if(!invalid(length_scale_2())){
-      plot <- plot + annotate("point", x = length_scale_2(), y = 0, colour = "red", size = 3) +
-        annotate("text",
-                 x = Inf,
-                 y = Inf,
-                 hjust = 1.1,  
-                 vjust = 1.5,
-                 label = paste0("draw = ", signif(length_scale_2(),3)),
-                 color="red",
-                 size = 5)
-    }
-    
-    plot
+    param_plot(d, "Inverse-Gamma prior for length scale of the second kernel", "density", "length scale", length_scale_2())    
   })
   
   # Half-t prior for variance plot
@@ -738,31 +668,10 @@ server <- function(input, output) {
     x_seq <- seq(0, 15, length.out = 400)
     df <- input$variance_2_df
     sc <- input$variance_2_scale
-    
     dens <- half_t(df = df, scale = sc, x = x_seq)
-    
     d <- data.frame(x=x_seq, y=dens)
     
-    plot <- ggplot(d, aes(x,y)) +
-      geom_line(color="darkgreen", linewidth=1) +
-      labs(title="Half-t prior for variance of the second kernel",
-           y="density", x="variance") +
-      theme_minimal(base_size=14)
-    
-    if(!invalid(variance_2())){
-      plot <- plot + 
-        annotate("point", x = variance_2(), y = 0, colour = "red", size = 3) +
-        annotate("text",
-                 x = Inf,
-                 y = Inf,
-                 hjust = 1.1,  
-                 vjust = 1.5,
-                 label = paste0("draw = ", signif(variance_2(),3)),
-                 color="red",
-                 size = 5)
-    }
-    
-    plot
+    param_plot(d, "Half-t prior for variance of the second kernel", "density", "variance", variance_2())
   })
   
   # Inverse-Gamma prior for period plot
@@ -772,30 +681,10 @@ server <- function(input, output) {
     x_seq <- seq(1e-6, 15, length.out = 400)
     alpha <- input$period_2_alpha
     beta  <- input$period_2_beta
-    
     dens <- inverse_gamma(alpha = alpha, beta = beta, x = x_seq) 
     d <- data.frame(x=x_seq, y=dens)
     
-    plot <- ggplot(d, aes(x,y)) +
-      geom_line(color="steelblue", linewidth=1) +
-      labs(title="Inverse-Gamma prior for period of the second kernel",
-           y="density", x="period") +
-      theme_minimal(base_size=14)
-    
-    if(!invalid(period_2())){
-      plot <- plot + 
-        annotate("point", x = period_2(), y = 0, colour = "red", size = 3) +
-        annotate("text",
-                 x = Inf,
-                 y = Inf,
-                 hjust = 1.1,  
-                 vjust = 1.5,
-                 label = paste0("draw = ", signif(period_2(),3)),
-                 color="red",
-                 size = 5)
-    }
-    
-    plot
+    param_plot(d, "Inverse-Gamma prior for period of the second kernel", "density", "period", period_2())
   })
   
  # Kernel based on distance plot
@@ -809,7 +698,7 @@ server <- function(input, output) {
       "variance" = c(variance(), variance_2())
       ,"length_scale" = c(length_scale(), length_scale_2())
       ,"period" = c(period(), period_2())
-      ,"roughness" = as.numeric(input$nu)
+      ,"roughness" = c(as.numeric(input$nu), as.numeric(input$nu_2))
     )
     
     k <- kernel_wrapper(input$kernel_label, dist, x_o, kernel_params)[,1]
