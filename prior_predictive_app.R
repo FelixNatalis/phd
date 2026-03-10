@@ -213,6 +213,10 @@ ui <- page_fillable(
     font-size:80%; 
     line-height: 16px;
   } 
+  .checkbox { 
+      font-size:80%; 
+      line-height: 16px;
+    } 
   .selectize-dropdown { 
     font-size:80%; 
     line-height: 16px; 
@@ -344,13 +348,13 @@ server <- function(input, output) {
   
   output$kernel_label_block <- renderUI({
     if(input$kernel_type){
-      layout_columns(
-        selectInput("kernel_label", "Choose a kernel:",
-                    kernel_labels, width = 18),
-        selectInput("kernel_label_2", "Choose a kernel:",
-                           kernel_labels, width = 8),
+      layout_column_wrap(
+        selectInput("kernel_label", "Choose the first kernel:",
+                    kernel_labels),
       selectInput("operation", "Choose a combining operation:",
-                           kernel_operation_labels, width = 8))
+                           kernel_operation_labels),
+        selectInput("kernel_label_2", "Choose the second kernel:",
+                           kernel_labels))
       
     }else{
       selectInput("kernel_label", "Choose a kernel:",
