@@ -61,28 +61,58 @@ periodic_kernel <- function(x1, x2, variance, length_scale, period) {
   )
 }
 
-kernels <- c("Squared Exponential", "Matérn", "Linear", "Periodic")
+kernel_labels <- c("Squared Exponential", "Matérn", "Linear", "Periodic")
 
-kernel_combinations = c(#"Changepoint", "Lin + SE", "Lin * SE",
+kernel_combination_labels <- c(#"Changepoint", "Lin + SE", "Lin * SE",
           "Per + SE", "Per * SE", "Per + Lin", "Per * Lin"
 )
 
+kernel_operation_labels <- c("add", "multiply", "changepoint")
+
+combine_kernels<- function(label_1, label_2, params_1, params_2, combination, x1, x2, params){
+  k_1 <- kernel_wrapper(label_1, x1, x2, params = params_1) 
+  k_2 <- kernel_wrapper(label_2, x1, x2, params = params_2)
+  if(combination == "add"){
+    return(k_1 + k_2)
+  }else if (combination == "multiply"){
+    return(k_1 * k_2)
+  }
+  else if (combination == "changepoint"){
+    # TODO params 
+    return(1)
+  }
+}
+
+
 kernel_wrapper <- function(kernel_label, x1, x2, params){ 
+  
+  if(kernel_label %in% kernel_combination_labels){
+    kernel_label_1 <- ""
+    kernel_label_2 <- ""
+    combination <- ""
+    params_1 <- params[["k_1"]]
+    params_2 <- params[["k_2"]]
+    additional_params <- params[["additional"]]
+    return(combine_kernels(kernel_label_1, kernel_label_2, params[1], params[2], combination, x1, x2, additional_params))
+  }
+  
   variance = params[["variance"]]
   length_scale = params[["length_scale"]]
   roughness = params[["roughness"]]
   period = params[["period"]]
   
   if(kernel_label == "Linear"){
+    #kernels(linear_kernel(x1 = x1, x2 = x2, variance = variance))
     if(!invalid(x1) & !invalid(x2) & !invalid(variance)){
       return(linear_kernel(x1 = x1, x2 = x2, variance = variance))
     }
   }
   
   if(kernel_label == "Squared Exponential"){
-    if(!invalid(x1) & !invalid(x2) & !invalid(variance) & !invalid(length_scale)){
-      return(squared_exponential_kernel(x1 = x1, x2 = x2, variance = variance, length_scale = length_scale))
-    }
+    #kernels(squared_exponential_kernel(x1 = x1, x2 = x2, variance = variance, length_scale = length_scale))
+     if(!invalid(x1) & !invalid(x2) & !invalid(variance) & !invalid(length_scale)){
+       return(squared_exponential_kernel(x1 = x1, x2 = x2, variance = variance, length_scale = length_scale))
+     }
   }
   
   if(kernel_label == "Matérn"){
@@ -97,41 +127,42 @@ kernel_wrapper <- function(kernel_label, x1, x2, params){
     }
   }
   
-  if(kernel_label == "Per * SE"){
-    if(!invalid(x1) & !invalid(x2) 
-       & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
-       & !invalid(variance[2]) & !invalid(length_scale[2])){
-      return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)*
-        squared_exponential_kernel(x1 = x1, x2 = x2, variance = variance[2], length_scale = length_scale[2]))
-    }
-  }
-  
-  if(kernel_label == "Per + SE"){
-    if(!invalid(x1) & !invalid(x2) 
-       & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
-       & !invalid(variance[2]) & !invalid(length_scale[2])){
-      return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)+
-               squared_exponential_kernel(x1 = x1, x2 = x2, variance = variance[2], length_scale = length_scale[2]))
-    }
-  }
-  
-  if(kernel_label == "Per * Lin"){
-    if(!invalid(x1) & !invalid(x2) 
-       & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
-       & !invalid(variance[2])){
-      return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)*
-               linear_kernel(x1 = x1, x2 = x2, variance = variance[2]))
-    }
-  }
-  
-  if(kernel_label == "Per + Lin"){
-    if(!invalid(x1) & !invalid(x2) 
-       & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
-       & !invalid(variance[2])){
-      return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)+
-               linear_kernel(x1 = x1, x2 = x2, variance = variance[2]))
-    }
-  }
+  # if(kernel_label == "Per * SE"){
+  #   kernels(c())
+  #   if(!invalid(x1) & !invalid(x2) 
+  #      & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
+  #      & !invalid(variance[2]) & !invalid(length_scale[2])){
+  #     return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)*
+  #       squared_exponential_kernel(x1 = x1, x2 = x2, variance = variance[2], length_scale = length_scale[2]))
+  #   }
+  # }
+  # 
+  # if(kernel_label == "Per + SE"){
+  #   if(!invalid(x1) & !invalid(x2) 
+  #      & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
+  #      & !invalid(variance[2]) & !invalid(length_scale[2])){
+  #     return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)+
+  #              squared_exponential_kernel(x1 = x1, x2 = x2, variance = variance[2], length_scale = length_scale[2]))
+  #   }
+  # }
+  # 
+  # if(kernel_label == "Per * Lin"){
+  #   if(!invalid(x1) & !invalid(x2) 
+  #      & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
+  #      & !invalid(variance[2])){
+  #     return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)*
+  #              linear_kernel(x1 = x1, x2 = x2, variance = variance[2]))
+  #   }
+  # }
+  # 
+  # if(kernel_label == "Per + Lin"){
+  #   if(!invalid(x1) & !invalid(x2) 
+  #      & !invalid(variance[1]) & !invalid(length_scale[1]) & !invalid(period) 
+  #      & !invalid(variance[2])){
+  #     return(periodic_kernel(x1 = x1, x2 = x2, variance = variance[1], length_scale = length_scale[1], period = period)+
+  #              linear_kernel(x1 = x1, x2 = x2, variance = variance[2]))
+  #   }
+  # }
 }
 
 #-------------------------------------------------------------------------------
@@ -209,9 +240,10 @@ ui <- page_fillable(
                       card_header("Kernel", style='padding:4px; font-size:80%'),
                       layout_columns(
                         column(width = 8,
-                          selectInput("kernel_label", "Choose a kernel:",
-                                      list(`Simple kernels` = kernels, 
-                                           `Kernel combinations` = kernel_combinations)),
+                               
+                               checkboxInput("kernel_type", "Use kernel combination?", value = FALSE, width = NULL),
+                               uiOutput("kernel_label_block"),
+                          
                           actionButton("draw_kernel", "Draw kernel")),
                         plotOutput("kernelPlot", height = "250px")
                       )
@@ -260,16 +292,18 @@ ui <- page_fillable(
 server <- function(input, output) {
   
   ## Observable variables
-  last_params   <- reactiveVal(NULL)
-  last_pool     <- reactiveVal(NULL)
-  variance      <- reactiveVal(NULL)
-  length_scale  <- reactiveVal(NULL)
-  roughness     <- reactiveVal(NULL)
-  period        <- reactiveVal(NULL)
+  last_params     <- reactiveVal(NULL)
+  last_pool       <- reactiveVal(NULL)
+  variance        <- reactiveVal(NULL)
+  length_scale    <- reactiveVal(NULL)
+  roughness       <- reactiveVal(NULL)
+  period          <- reactiveVal(NULL)
   variance_2      <- reactiveVal(NULL)
   length_scale_2  <- reactiveVal(NULL)
   roughness_2     <- reactiveVal(NULL)
   period_2        <- reactiveVal(NULL)
+  kernels         <- reactiveVal(NULL)
+  combination     <- reactiveVal(NULL)
 
   rv <- reactiveValues(
     var = FALSE,
@@ -286,6 +320,7 @@ server <- function(input, output) {
  # shinyjs::disable("draw_kernel")
   
   observe({
+    if(!invalid(input$kernel_label)){
     if (input$kernel_label == "Linear" && rv$var || input$kernel_label == "Per + Lin") { # TODO
       shinyjs::enable("draw_kernel")
       
@@ -303,12 +338,28 @@ server <- function(input, output) {
       
     } else {
       shinyjs::disable("draw_kernel")
-    }
+    }}
   })
   
   
+  output$kernel_label_block <- renderUI({
+    if(input$kernel_type){
+      layout_columns(
+        selectInput("kernel_label", "Choose a kernel:",
+                    kernel_labels, width = 18),
+        selectInput("kernel_label_2", "Choose a kernel:",
+                           kernel_labels, width = 8),
+      selectInput("operation", "Choose a combining operation:",
+                           kernel_operation_labels, width = 8))
+      
+    }else{
+      selectInput("kernel_label", "Choose a kernel:",
+                  choices = kernel_labels)
+    }
+  })
+  
   output$dynamic_length_scale_choice <- renderUI({
-    if (!(input$kernel_label %in% c("Linear", "Lin + Lin", "Lin * Lin"))) {
+    if (!invalid(input$kernel_label) && !(input$kernel_label %in% c("Linear", "Lin + Lin", "Lin * Lin"))) {
       card(
         card_header("Hyperparameters for length scale"),
         layout_columns(
@@ -323,7 +374,7 @@ server <- function(input, output) {
   })
   
   output$dynamic_period_choice <- renderUI({
-    if (grepl("Per", input$kernel_label)) {
+    if (!invalid(input$kernel_label) && grepl("Per", input$kernel_label)) {
       card(
         card_header("Hyperparameters for period"),
         layout_columns(
@@ -338,7 +389,7 @@ server <- function(input, output) {
   })
   
   output$dynamic_roughness_choice <- renderUI({
-    if (grepl("Mat",input$kernel_label) && !grepl("Per",input$kernel_label)) {
+    if (!invalid(input$kernel_label) && grepl("Mat",input$kernel_label) && !grepl("Per",input$kernel_label)) {
       card(
         card_header("Hyperparameters for roughness"),
         sliderTextInput("nu", "Value of roughness:", choices = c(0.5, 1.5, 2.5, 3.5),
@@ -352,7 +403,7 @@ server <- function(input, output) {
   
   output$dynamic_variance_2_choice <- renderUI({
     
-    if (input$kernel_label %in% kernel_combinations) {
+    if (!invalid(input$kernel_label) && input$kernel_label %in% kernel_combination_labels) {
       card(
         card_header("Hyperparameters for variance of the second kernel"),
         layout_columns(
@@ -367,7 +418,7 @@ server <- function(input, output) {
   })  
   
   output$dynamic_length_scale_2_choice <- renderUI({
-    if ((input$kernel_label %in% kernel_combinations) && !grepl("Lin",input$kernel_label)) {#! different condition
+    if (!invalid(input$kernel_label) && (input$kernel_label %in% kernel_combination_labels) && !grepl("Lin",input$kernel_label)) {#! different condition
       card(
         card_header("Hyperparameters for length scale of the second kernel"),
         layout_columns(
@@ -382,7 +433,7 @@ server <- function(input, output) {
   })
   
   output$dynamic_period_2_choice <- renderUI({
-    if (input$kernel_label %in% c("Per + Per", "Per * Per")) {
+    if (!invalid(input$kernel_label) && input$kernel_label %in% c("Per + Per", "Per * Per")) {
       card(
         card_header("Hyperparameters for period of the second kernel"),
         layout_columns(
@@ -397,7 +448,7 @@ server <- function(input, output) {
   })
   
   output$dynamic_roughness_2_choice <- renderUI({
-    if (input$kernel_label %in% c("Mat + Mat", "Mat * Mat")) {
+    if (!invalid(input$kernel_label) && input$kernel_label %in% c("Mat + Mat", "Mat * Mat")) {
       card(
         card_header("Hyperparameters for roughness of the second kernel"),
         sliderTextInput("nu_2", "Value of roughness:", choices = c(0.5, 1.5, 2.5, 3.5),
