@@ -9,6 +9,7 @@ library(shinyWidgets)
 library(bslib)
 library(gtools)
 library(shinyjs)
+library(lineqGPR)
 
 #-------------------------------------------------------------------------------
 ################################################################################
@@ -134,6 +135,35 @@ simulate_gp <- function(x, is_combination, kernel_label, kernel_params, sigma_no
   
   drop(f + eps)
 }
+
+simulate_constrained_gp <- function(x, y,  kernel_label, kernel_params, constraints, constraint_params, n_functions, n_points = 50, data_noise = 1.5){
+  variance <- kernel_params[["kernel_1"]][["variance"]]
+  length_scale <- kernel_params[["kernel_1"]][["length_scale"]]
+  roughness <- kernel_params[["kernel_1"]][["roughness"]]
+  
+  if(kernel_label == "Squared Exponential"){
+    kernel_type <- "gaussian"
+  } else if(kernel_label == "Matérn"){
+    if(roughness == 2.5){
+    kernel_type <- "matern52"
+    } else if(roughness == 1.5){
+      kernel_type <- "matern32"
+    }
+  }
+  
+  model <- create(class = "lineqGP", x = x, y = y, constrType = constraints)
+  model$localParam$m <- n_points
+  model$bounds[1, ] <- c(constraint_params[["lower_bound"]],constraint_params[["upper_bound"]])
+  model$kernParam$type = kernel_type
+  model$kernParam$par<- c(variance, length_scale)
+  model$varnoise <- data_noise
+  model <- augment(model)
+  
+  # sampling from the model
+  sim.model <- simulate(model, nsim = n_functions, seed = 1, xtest = x)
+  
+  return(sim.model$ysim)
+}
 #-------------------------------------------------------------------------------
 ## Distributions
 
@@ -170,7 +200,7 @@ ui <- page_fillable(
     line-height: 16px;
   } 
   .checkbox { 
-      font-size:80%; 
+      font-size:85%; 
       line-height: 16px;
     } 
   .selectize-dropdown { 
@@ -182,7 +212,7 @@ ui <- page_fillable(
   }
   .card-header {
     padding: 4px;
-    font-size:80%;
+    font-size:85%;
   }
   .btn {
     padding: 2px 6px;
@@ -200,10 +230,8 @@ ui <- page_fillable(
                       card_header("Kernel", style='padding:4px; font-size:80%'),
                       layout_columns(
                         column(width = 8,
-                               
                                checkboxInput("is_combination", "Use kernel combination?", value = FALSE, width = NULL),
                                uiOutput("kernel_label_block"),
-                          
                           actionButton("draw_kernel", "Draw kernel")),
                         plotOutput("plot_kernel", height = "250px")
                       )
@@ -221,18 +249,35 @@ ui <- page_fillable(
                     uiOutput("dynamic_length_scale_choice"),
                     uiOutput("dynamic_roughness_choice"),
                     uiOutput("dynamic_period_choice"),
-                    uiOutput("dynamic_variance_2_choice"),#!
-                    uiOutput("dynamic_length_scale_2_choice"),#!
-                    uiOutput("dynamic_roughness_2_choice"),#!
-                    uiOutput("dynamic_period_2_choice"),#!
-                    uiOutput("dynamic_changepoint_choice"),#!
+                    uiOutput("dynamic_variance_2_choice"),
+                    uiOutput("dynamic_length_scale_2_choice"),
+                    uiOutput("dynamic_roughness_2_choice"),
+                    uiOutput("dynamic_period_2_choice"),
+                    uiOutput("dynamic_changepoint_choice"),
               )), 
+    nav_panel("Constraints", 
+           card(
+              layout_columns(
+              column(width = 8,
+              checkboxInput("is_upper_bound", "Upper bound", value = FALSE, width = NULL),
+              uiOutput("dynamic_upper_bound_choice")),
+              column(width = 8,
+              checkboxInput("is_lower_bound", "Lower bound", value = FALSE, width = NULL),
+              uiOutput("dynamic_lower_bound_choice")),
+              column(width = 8,
+              checkboxInput("is_monotonicity", "Monotonicity", value = FALSE, width = NULL),
+              uiOutput("dynamic_monotonicity_choice")),
+              column(width = 8,
+              checkboxInput("is_convexity", "Convexity", value = FALSE, width = NULL)),
+              uiOutput("dynamic_constraint_choice")
+              ))),
+    
     nav_panel("GP", 
               card(
                 card(
                   card_header("Other parameters"),
                   #sliderInput("sigma_n", "Noise amplitude:", 0, 15, 1),
-                  sliderInput("nfunc", "Number of Functions:", 1, n_functions, 3),
+                  sliderInput("nfunc", "Number of Functions:", 1, n_functions, 5),
                   sliderInput("n_points", "Number of X Points:", value = n_points, min = 2, max = 400),
                   sliderInput("x_range", "x range", min = -100, max = 100, value = c(x_min, x_max)), 
                   disabled(actionButton("draw_gp", "Draw GP"))
@@ -273,28 +318,8 @@ server <- function(input, output) {
     ls_2  = FALSE,
     per_2 = FALSE
   )
-  
-  #-------------------------------------------------------------------------------
-  ## Dynamic ui elements 
-  
-  output$kernel_label_block <- renderUI({
-    if(input$is_combination){
-      layout_column_wrap(
-        selectInput("kernel_label", "Choose the first kernel:",
-                    kernel_labels),
-        selectInput("operation", "Choose a combining operation:",
-                    kernel_operation_labels),
-        selectInput("kernel_label_2", "Choose the second kernel:",
-                    kernel_labels))
-    }else{
-      selectInput("kernel_label", "Choose a kernel:",
-                  choices = kernel_labels)
-    }
-  })
-  
-  shinyjs::disable("draw_kernel")
-  
-  condition_parameters_enough<- function(){
+    
+  condition_parameters_check<- function(){
     return((input$kernel_label == "Linear" 
             && rv$var 
             || input$kernel_label == "Periodic" 
@@ -315,8 +340,38 @@ server <- function(input, output) {
                   && rv$var_2 && rv$ls_2)))
   }
   
+  constrained_check <-function(){
+    return(
+      input$is_upper_bound || input$is_lower_bound || input$is_monotonicity || input$is_convexity
+    )
+  }
+  condition_constrained_parameters_check<-function(){ # TODO check that everything is filled
+    return(
+      input$is_upper_bound || input$is_lower_bound || input$is_monotonicity || input$is_convexity
+    )
+  }
+  #-------------------------------------------------------------------------------
+  ## Dynamic ui elements 
+  
+  output$kernel_label_block <- renderUI({
+    if(input$is_combination){
+      layout_column_wrap(
+        selectInput("kernel_label", "Choose the first kernel:",
+                    kernel_labels),
+        selectInput("operation", "Choose a combining operation:",
+                    kernel_operation_labels),
+        selectInput("kernel_label_2", "Choose the second kernel:",
+                    kernel_labels))
+    }else{
+      selectInput("kernel_label", "Choose a kernel:",
+                  choices = kernel_labels)
+    }
+  })
+  
+  shinyjs::disable("draw_kernel")
+
   observe({                   
-      if (condition_parameters_enough()) {
+      if (condition_parameters_check()) {
         shinyjs::enable("draw_kernel")
       } else {
         shinyjs::disable("draw_kernel")
@@ -382,7 +437,7 @@ server <- function(input, output) {
   })  
   
   output$dynamic_length_scale_2_choice <- renderUI({
-    if (!invalid(input$kernel_label_2) && (input$kernel_label_2 != "Linear")) {#! different condition
+    if (!invalid(input$kernel_label_2) && (input$kernel_label_2 != "Linear")) {
       card(
         card_header("Hyperparameters for length scale of the second kernel"),
         layout_columns(
@@ -429,6 +484,38 @@ server <- function(input, output) {
          sliderInput("steepness", "Steepness of changepoint:", 0.1, 10, 0.1)
        )
      }
+  })
+  
+  #-------------------------------------------------------------------------------
+  # Constraint parameters
+  
+  output$dynamic_upper_bound_choice <- renderUI({
+    if(input$is_upper_bound){
+    numericInput( 
+      "upper_bound", 
+      "", 
+      value = 10, 
+      min = -10, 
+      max = 10 
+    )}
+  })
+  
+  output$dynamic_lower_bound_choice <- renderUI({
+    if(input$is_lower_bound){
+      numericInput( 
+        "lower_bound", 
+        "", 
+        value = 0, 
+        min = -10, 
+        max = 10 
+      )}
+  })
+  
+  output$dynamic_monotonicity_choice <- renderUI({
+    if(input$is_monotonicity){
+      selectInput( 
+        "monotonicity", label = "Monotonicity type", choices = c("nondecreasing", "nonincreasing")
+      )}
   })
 
   #-------------------------------------------------------------------------------
@@ -504,6 +591,7 @@ server <- function(input, output) {
   #-------------------------------------------------------------------------------
   ## GP redraw logic
   gp_pool <- eventReactive(input$draw_gp, {
+    if(!constrained_check()){
     tryCatch({
     kernel <- c(input$kernel_label, input$kernel_label_2)
     len <- length_scale()
@@ -519,12 +607,7 @@ server <- function(input, output) {
     ope <- operation()
     old_params <- last_params()
     old_pool   <- last_pool()
-   
-    # cat(paste("\n kernel_prev", old_params$kernel_prev, "\n")) 
-    # cat(paste("\n length_scale", old_params$length_scale, "\n"))
-    # cat(paste("\n variance", old_params$variance, "\n"))
-    # cat(paste("\n period", old_params$period, "\n"))
-    # cat(paste("\n roughness", old_params$roughness, "\n"))
+    #TODO add bound parameters
     
     # reuse pool when parameters unchanged
     if (!is.null(old_params) &&
@@ -579,7 +662,7 @@ server <- function(input, output) {
       n_functions,
       simulate_gp(x_orig, input$is_combination,kernel_label, kernel_params)
     )
-    
+
     new_pool <- list(x_orig = x_orig, funcs = funcs)
     
     last_params(list(kernel_prev = kernel, length_scale = len, variance = var, period = per, roughness = ro
@@ -590,12 +673,40 @@ server <- function(input, output) {
     
     new_pool
     }, error=function(e) {
-      cat(paste("\nerror in gp draw\n",e,"\n","\n"  #TODO
-                ))
+      cat(paste("\nError in gp draw\n",e,"\n"))
     }, warning=function(w) {
-      cat(paste("\nwarning in gp draw\n"))
+      cat(paste("\nWarning in gp draw\n",w,"\n"))
     })
-  })
+  
+  }else{
+    x_orig <- seq(input$x_range[1], input$x_range[2], length.out = input$n_points)
+    kernel_params <- hash(
+      "kernel_1" = hash(
+        "variance" = variance()
+        ,"length_scale" = length_scale()
+        ,"period" = period()
+        ,"roughness" = roughness()
+      ))
+    # TODO draw constrained
+    constraints <- c()
+    if(input$is_upper_bound || input$is_lower_bound){ 
+      constraints <-append(constraints, "boundedness")
+    }else if(input$is_monotonicity){
+      constraints <-append(constraints, "monotonicity")
+    }else if(input$is_convexity){
+      constraints <-append(constraints, "convexity")
+    }
+    
+    constraint_params <- hash(
+      "lower_bound" = input$lower_bound,
+      "upper_bound" =input$upper_bound
+      #, "monotonicity_type" = input$monotonicity
+    )
+    # cat(paste())
+    funcs<- simulate_constrained_gp(x_orig, rep(0, length(x_orig)),  input$kernel_label, kernel_params, constraints, constraint_params, input$nfunc)
+    cat(paste("\n\n","funcs in pool", funcs, "\n\n"))
+  }
+    })
   
   # For storing and reproducing draws that were already computed
   gp_data <- reactive({
@@ -606,16 +717,24 @@ server <- function(input, output) {
     
     x_new <- seq(input$x_range[1], input$x_range[2], length.out = input$n_points)
     
+    if(!constrained_check()){
     funcs_interp <- apply(gp_pool()$funcs[, idx, drop=FALSE], 2, function(f) {
       approx(gp_pool()$x_orig, f, xout = x_new)$y
-    })
+    })}
+    else{    
+      funcs_interp<-gp_pool()
+      cat(paste("\n\n","funcs_interp in gp data", funcs_interp, "\n\n"))
+    }
     
-    data.frame(
+    data <- data.frame(
       x = rep(x_new, length(idx)),
       f = as.vector(funcs_interp),
       func = rep(idx, each = length(x_new))
-    )
-  })
+    )    
+    
+    cat(paste("\n\n","data", data, "\n\n"))
+    data
+})
   
   observeEvent(input$draw_kernel, {
     enable("draw_gp")
@@ -625,28 +744,18 @@ server <- function(input, output) {
   ## plots
   
   param_plot<- function(dataframe, title, y_label, x_label, observation_value){
-    
     plot <- ggplot(dataframe, aes(x,y)) +
       geom_line(color="steelblue", linewidth=1) +
-      labs(title=title,
-           y=y_label, x=x_label) +
+      labs(title=title,y=y_label, x=x_label) +
       theme_minimal(base_size=14)
     
     if(!invalid(observation_value)){
       plot <- plot + 
         annotate("point", x = observation_value, y = 0, colour = "red", size = 3) +
-        annotate("text",
-                 x = Inf,
-                 y = Inf,
-                 hjust = 1.1,  
-                 vjust = 1.5,
-                 label = paste0("draw = ", signif(observation_value,3)),
-                 color="red",
-                 size = 5)
+        annotate("text",x = Inf,y = Inf,hjust = 1.1,vjust = 1.5,color="red",size = 5,
+                 label = paste0("draw = ", signif(observation_value,3)))
     }
-    
     plot
-    
   }
   
   # Inverse-Gamma prior for length_scale plot
@@ -735,7 +844,7 @@ server <- function(input, output) {
   output$plot_kernel <- renderPlot({
     req(input$draw_kernel)
     tryCatch({
-      if(condition_parameters_enough()){
+      if(condition_parameters_check()){
     
     dist <- seq(-3, 3, length.out = 300)
     x_o <- rep(0, length(dist))
@@ -745,7 +854,6 @@ server <- function(input, output) {
     }else{
       kernel_label <- input$kernel_label
     }
-    
     
     kernel_params <- hash(
       "kernel_1" = hash(
@@ -768,7 +876,7 @@ server <- function(input, output) {
         )))
     
     k <- kernel_wrapper(input$is_combination, kernel_label, dist, x_o, kernel_params)[,1]
-    #cat(paste("\n",length(dist), " ", length(k), "\n"))
+
     kernel_title <- paste(input$kernel_label, input$operation, input$kernel_label_2)
     ggplot(data.frame(dist=dist, k=k), aes(dist,k)) +
       geom_line(color="purple", linewidth=1.2) +
@@ -787,22 +895,24 @@ server <- function(input, output) {
   output$plot_gp <- renderPlot({
     tryCatch({
     req(input$draw_gp)
-    observe(gp_data())#, period_draw(), length_scale_draw(), variance_draw())
+    if(condition_parameters_check()&&!constrained_check() 
+       || condition_constrained_parameters_check()){
+      observe(gp_data())
       kernel_title <- paste(input$kernel_label, input$operation, input$kernel_label_2)
-    ggplot(gp_data(), aes(x=x, y=f, group=func, color=factor(func))) +
-      geom_line(alpha=0.9, linewidth=1) +
-      scale_color_discrete(guide="none") +
-      labs(title="Gaussian Process Prior Samples",
-           subtitle= paste(kernel_title, "Kernel"),
-           x="x", y="f(x)") +
-      theme_minimal(base_size=16)
+      ggplot(gp_data(), aes(x=x, y=f, group=func, color=factor(func))) +
+        geom_line(alpha=0.9, linewidth=1) +
+        scale_color_discrete(guide="none") +
+        labs(title="Gaussian Process Prior Samples",
+             subtitle= paste(kernel_title, "Kernel"),
+             x="x", y="f(x)") +
+        theme_minimal(base_size=16)
+    }
     }, error=function(e) {
-      cat(paste("\nerror in gp plot\n", e, "\n"))
+      cat(paste("\nError in gp plot\n", e, "\n"))
     }, warning=function(w) {
-      cat(paste("\nwarning in gp plot\n", w, "\n"))
+      cat(paste("\nWarning in gp plot\n", w, "\n"))
     })
   })
-  
 }
 
 shinyApp(ui, server)
