@@ -205,7 +205,7 @@ ui <- page_fillable(
                                uiOutput("kernel_label_block"),
                           
                           actionButton("draw_kernel", "Draw kernel")),
-                        plotOutput("kernelPlot", height = "250px")
+                        plotOutput("plot_kernel", height = "250px")
                       )
                     ), 
                     card(
@@ -237,7 +237,7 @@ ui <- page_fillable(
                   sliderInput("x_range", "x range", min = -100, max = 100, value = c(x_min, x_max)), 
                   disabled(actionButton("draw_gp", "Draw GP"))
                 ),
-                card(plotOutput("gpPlot", height = "600px"))
+                card(plotOutput("plot_gp", height = "600px"))
               ),), 
     id = "nav"),
 )
@@ -294,26 +294,29 @@ server <- function(input, output) {
   
   shinyjs::disable("draw_kernel")
   
+  condition_parameters_enough<- function(){
+    return((input$kernel_label == "Linear" 
+            && rv$var 
+            || input$kernel_label == "Periodic" 
+            && rv$var && rv$ls && rv$per 
+            || input$kernel_label == "Squared Exponential" 
+            && rv$var && rv$ls 
+            || input$kernel_label == "Matérn" 
+            && rv$var && rv$ls) 
+           && (!input$is_combination ||# conditions on kernel 1
+                 input$is_combination && 
+                 (input$kernel_label_2 == "Linear" 
+                  && rv$var_2 
+                  || input$kernel_label_2 == "Periodic" 
+                  && rv$var_2 && rv$ls_2 && rv$per_2 
+                  || input$kernel_label_2 == "Squared Exponential" 
+                  && rv$var_2 && rv$ls_2 
+                  || input$kernel_label_2 == "Matérn" 
+                  && rv$var_2 && rv$ls_2)))
+  }
+  
   observe({                   
-      if ((input$kernel_label == "Linear" 
-              && rv$var 
-           || input$kernel_label == "Periodic" 
-              && rv$var && rv$ls && rv$per 
-           || input$kernel_label == "Squared Exponential" 
-              && rv$var && rv$ls 
-           || input$kernel_label == "Matérn" 
-              && rv$var && rv$ls) 
-          && (!input$is_combination ||# conditions on kernel 1
-              input$is_combination && 
-              (input$kernel_label_2 == "Linear" 
-               && rv$var_2 
-               || input$kernel_label_2 == "Periodic" 
-               && rv$var_2 && rv$ls_2 && rv$per_2 
-               || input$kernel_label_2 == "Squared Exponential" 
-               && rv$var_2 && rv$ls_2 
-               || input$kernel_label_2 == "Matérn" 
-               && rv$var_2 && rv$ls_2))
-          ) {
+      if (condition_parameters_enough()) {
         shinyjs::enable("draw_kernel")
       } else {
         shinyjs::disable("draw_kernel")
@@ -516,22 +519,28 @@ server <- function(input, output) {
     ope <- operation()
     old_params <- last_params()
     old_pool   <- last_pool()
+   
+    # cat(paste("\n kernel_prev", old_params$kernel_prev, "\n")) 
+    # cat(paste("\n length_scale", old_params$length_scale, "\n"))
+    # cat(paste("\n variance", old_params$variance, "\n"))
+    # cat(paste("\n period", old_params$period, "\n"))
+    # cat(paste("\n roughness", old_params$roughness, "\n"))
     
     # reuse pool when parameters unchanged
     if (!is.null(old_params) &&
         is.list(old_params) &&
         identical(old_params$kernel_prev, kernel) &&
-        identical(signif(old_params$length_scale,10), signif(len,10)) &&
-        identical(signif(old_params$variance,10),  signif(var,10)) &&
-        identical(signif(old_params$period,10), signif(per,10)) &&
-        identical(signif(old_params$roughness,10), signif(ro,10)) &&
-        identical(signif(old_params$length_scale_2,10), signif(len_2,10)) &&
-        identical(signif(old_params$variance_2,10),  signif(var_2,10)) &&
-        identical(signif(old_params$period_2,10), signif(per_2,10)) &&
-        identical(signif(old_params$roughness_2,10), signif(ro_2,10)) &&
-        identical(signif(old_params$location,10), signif(loc,10)) &&
-        identical(signif(old_params$steepness,10), signif(ste,10)) &&
-        identical(signif(old_params$operation,10), signif(ope,10)) &&
+        identical(old_params$length_scale, len) &&
+        identical(old_params$variance,  var) &&
+        identical(old_params$period, per) &&
+        identical(old_params$roughness, ro) &&
+        identical(old_params$length_scale_2, len_2) &&
+        identical(old_params$variance_2,  var_2) &&
+        identical(old_params$period_2, per_2) &&
+        identical(old_params$roughness_2, ro_2) &&
+        identical(old_params$location, loc) &&
+        identical(old_params$steepness, ste) &&
+        identical(old_params$operation, ope) &&
         !is.null(old_pool) &&
         is.list(old_pool)) {
       
@@ -539,6 +548,12 @@ server <- function(input, output) {
     }
     
     x_orig <- seq(input$x_range[1], input$x_range[2], length.out = input$n_points)
+    
+    if(input$is_combination){
+      kernel_label <- c(input$kernel_label, input$kernel_label_2)
+    }else{
+      kernel_label <- input$kernel_label
+    }
     
     kernel_params <- hash(
       "kernel_1" = hash(
@@ -562,7 +577,7 @@ server <- function(input, output) {
     
     funcs <- replicate(
       n_functions,
-      simulate_gp(x_orig, input$is_combination, c(input$kernel_label, input$kernel_label_2), kernel_params)
+      simulate_gp(x_orig, input$is_combination,kernel_label, kernel_params)
     )
     
     new_pool <- list(x_orig = x_orig, funcs = funcs)
@@ -575,7 +590,7 @@ server <- function(input, output) {
     
     new_pool
     }, error=function(e) {
-      cat(paste("\nerror in gp draw\n", old_params$kernel_prev #TODO
+      cat(paste("\nerror in gp draw\n",e,"\n","\n"  #TODO
                 ))
     }, warning=function(w) {
       cat(paste("\nwarning in gp draw\n"))
@@ -717,13 +732,21 @@ server <- function(input, output) {
   })
   
  # Kernel based on distance plot
-  output$kernelPlot <- renderPlot({
-    tryCatch({
+  output$plot_kernel <- renderPlot({
     req(input$draw_kernel)
+    tryCatch({
+      if(condition_parameters_enough()){
     
     dist <- seq(-3, 3, length.out = 300)
     x_o <- rep(0, length(dist))
 
+    if(input$is_combination){
+      kernel_label <- c(input$kernel_label, input$kernel_label_2)
+    }else{
+      kernel_label <- input$kernel_label
+    }
+    
+    
     kernel_params <- hash(
       "kernel_1" = hash(
         "variance" = variance()
@@ -744,37 +767,39 @@ server <- function(input, output) {
           "steepness" = input$steepness
         )))
     
-    k <- kernel_wrapper(input$is_combination, c(input$kernel_label, input$kernel_label_2), dist, x_o, kernel_params)[,1]
-    
+    k <- kernel_wrapper(input$is_combination, kernel_label, dist, x_o, kernel_params)[,1]
+    #cat(paste("\n",length(dist), " ", length(k), "\n"))
+    kernel_title <- paste(input$kernel_label, input$operation, input$kernel_label_2)
     ggplot(data.frame(dist=dist, k=k), aes(dist,k)) +
       geom_line(color="purple", linewidth=1.2) +
-      labs(title=input$kernel_label, x="Distance", y="k(x)") +
+      labs(title=paste(kernel_title, "Kernel"), x="Distance", y="k(x)") +
       theme_minimal(base_size=14)
+      }
     }, error=function(e) {
-      cat(paste("\nerror in kernel plot\n"))
+      cat(paste("\nError in kernel plot\n", e, "\n"))
     }, warning=function(w) {
-      cat(paste("\nwarning in kernel plot\n"))
+      cat(paste("\nWarning in kernel plot\n", w, "\n"))
     })
-    
   })
   
   
   # GP prior draws plot
-  output$gpPlot <- renderPlot({
+  output$plot_gp <- renderPlot({
     tryCatch({
     req(input$draw_gp)
     observe(gp_data())#, period_draw(), length_scale_draw(), variance_draw())
+      kernel_title <- paste(input$kernel_label, input$operation, input$kernel_label_2)
     ggplot(gp_data(), aes(x=x, y=f, group=func, color=factor(func))) +
       geom_line(alpha=0.9, linewidth=1) +
       scale_color_discrete(guide="none") +
       labs(title="Gaussian Process Prior Samples",
-           subtitle= paste(input$kernel_label, "Kernel"),
+           subtitle= paste(kernel_title, "Kernel"),
            x="x", y="f(x)") +
       theme_minimal(base_size=16)
     }, error=function(e) {
-      cat(paste("\nerror in gp plot\n"))
+      cat(paste("\nerror in gp plot\n", e, "\n"))
     }, warning=function(w) {
-      cat(paste("\nwarning in gp plot\n"))
+      cat(paste("\nwarning in gp plot\n", w, "\n"))
     })
   })
   
