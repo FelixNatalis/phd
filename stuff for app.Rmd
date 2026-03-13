@@ -816,25 +816,25 @@ plot(xtest, ysim[, sample(ncol(ysim),nblines)],
 
 ```{r}
 ## ------------------------------------------------------------------
-## Gaussian process regression modelling under multiple constraints WITHOUT DATA
+## Gaussian process regression modelling under multiple constraints WITHOUT DATA || WITH FLAT DATA
 ## ------------------------------------------------------------------
 library(lineqGPR)
 
 #### generating the synthetic data ####
 sigfun <- function(x) return(1/(1+exp(-7*(x-0.5))))
-x <- c(0.1, 0.101)
-y <- sigfun(x)
+x <- c(0.0, 0.1, 0.2, 0.3,0.35, 0.4, 0.45,0.5, 0.6, 0.7, 0.8, 0.9, 1)
+y <- c(0.0, 0.1, 0.2, 0.35, 0.35,0.37, 0.38, 0.39, 0.4, 0.5, 0.6, 0.7, 0.8)
 #DoE <- splitDoE(x, y, DoE.idx = c(201, 501, 801))
 
 #### GP with boundedness and monotonicity constraints ####
 # creating the "lineqGP" model
 model <- create(class = "lineqGP", x = x, y = y,#DoE$ydesign,
-                constrType = c("boundedness","monotonicity"))
+                constrType = c("boundedness"))#,"monotonicity"))
 model$localParam$m <- 50
 model$bounds[1, ] <- c(0,1)
 model$kernParam$type = "gaussian"
-model$kernParam$par<- c( 2, 0.14)
-model$varnoise <- 1.5
+model$kernParam$par<- c( 1, 0.14)
+#model$varnoise <- 2
                     
 #model$kernParam$type<-"gaussian"
 #model$kernParam$par<-c(1, 1)
@@ -850,6 +850,14 @@ legend("topleft", c("ytrain","ytest","mean","confidence"),
        lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
        col = c("black","black","darkgreen","gray80"))
 ```
+
+
+
+\
+
+
+
+
 ```{r}
 x1 <- seq(-1, 1, length.out = 5)
 variance_1 = 1
@@ -962,4 +970,249 @@ legend("bottomright", c("ytrain","ytest","mean","confidence"),
 ## ------------------------------------------------------------------
 ```
 
+#________________________________________________________________________ DEBUG
+
+```{r}
+simulate_constrained_gp <- function(x, y,  kernel_label, kernel_params, constraints, constraint_params, n_functions, n_points = 50, data_noise = 1.5){
+  variance <- kernel_params[["kernel_1"]][["variance"]]
+  length_scale <- kernel_params[["kernel_1"]][["length_scale"]]
+  roughness <- kernel_params[["kernel_1"]][["roughness"]]
+  
+  if(kernel_label == "Squared Exponential"){
+    kernel_type <- "gaussian"
+  } else if(kernel_label == "Matérn"){
+    if(roughness == 2.5){
+    kernel_type <- "matern52"
+    } else if(roughness == 1.5){
+      kernel_type <- "matern32"
+    }
+  }
+  
+  model <- create(class = "lineqGP", x = x, y = y, constrType = constraints)
+  model$localParam$m <- n_points
+  model$bounds[1, ] <- c(constraint_params[["lower_bound"]],constraint_params[["upper_bound"]])
+  model$kernParam$type = kernel_type
+  model$kernParam$par<- c(variance, length_scale)
+  model$varnoise <- data_noise
+  model <- augment(model)
+  
+  # sampling from the model
+  sim.model <- simulate(model, nsim = n_functions, seed = 1, xtest = x)
+  
+  return(sim.model$ysim)
+}
+```
+
+```{r}
+    x_orig <- seq(-10, 10, length.out = 100)
+    kernel_params <- hash(
+      "kernel_1" = hash(
+        "variance" = 2
+        ,"length_scale" = 0.14
+        ,"period" = NULL
+        ,"roughness" = NULL
+      ))
+    # TODO draw constrained
+    constraints <- c()
+
+      constraints <-append(constraints, "boundedness")
+  #    constraints <-append(constraints, "monotonicity")
+  #    constraints <-append(constraints, "convexity")
+
+    
+    constraint_params <- hash(
+      "lower_bound" = 0,
+      "upper_bound" =10
+    ) 
+    funcs<- simulate_constrained_gp(x_orig, rep(0, length(x_orig)), "Squared Exponential", kernel_params, constraints, constraint_params, 5)
+    cat(paste("\n\n","funcs in pool", funcs, "\n\n"))
+```
+
+```{r}
+##### working 
+## ------------------------------------------------------------------
+## Gaussian process regression modelling under multiple constraints WITHOUT DATA
+## ------------------------------------------------------------------
+library(lineqGPR)
+
+#### generating the synthetic data ####
+x <- seq(0, 1, 0.1)
+y <- x
+
+model <- create(class = "lineqGP", x = x, y = y,#DoE$ydesign,
+                constrType = c("boundedness"))#,"monotonicity"))
+model$localParam$m <- 50
+model$bounds[1, ] <- c(0,1)
+model$kernParam$type = "gaussian"
+model$kernParam$par<- c( 2, 0.14)
+model$varnoise <- 1.5
+                    
+#model$kernParam$type<-"gaussian"
+#model$kernParam$par<-c(1, 1)
+model <- augment(model)
+
+# sampling from the model
+sim.model <- simulate(model, nsim = 5, seed = 1, xtest = x)
+plot(sim.model, bounds = model$bounds,
+     xlab = "x", ylab = "y(x)", ylim = range(0, 1),
+     main = "Constrained GP model under boundedness & monotonicity conditions")
+lines(x, y, lty = 2)
+legend("topleft", c("ytrain","ytest","mean","confidence"),
+       lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
+       col = c("black","black","darkgreen","gray80"))
+```
+
+
+```{r}
+    idx <- 1:5
+    idx <- idx[idx <= 100] 
+    data <- data.frame(
+      x = rep(x, length(idx)),
+      f = as.vector(sim.model$ysim),
+      func = rep(idx, each = length(x))
+    )    
+
+      ggplot(data, aes(x=x, y=f, group=func, color=factor(func))) +
+        geom_line(alpha=0.9, linewidth=1) +
+        scale_color_discrete(guide="none") +
+        labs(title="Gaussian Process Prior Samples",
+             subtitle= paste("kernel_title", "Kernel"),
+             x="x", y="f(x)") +
+        theme_minimal(base_size=16)
+```
+
+##---------------------------------------WORKING
+
+```{r}
+simulate_constrained_gp <- function(x, y,  kernel_label, kernel_params, constraints, constraint_params, n_functions, n_points = 50, data_noise = 1.5){
+  k_1<-kernel_params[["kernel_1"]]$kernel_1
+  variance <- k_1[["variance"]]
+  length_scale <- k_1[["length_scale"]]
+  roughness <- k_1[["roughness"]]
+  
+  if(kernel_label == "Squared Exponential"){
+    kernel_type <- "gaussian"
+  } else if(kernel_label == "Matérn"){
+    if(roughness == 2.5){
+    kernel_type <- "matern52"
+    } else if(roughness == 1.5){
+      kernel_type <- "matern32"
+    }
+  }
+  
+  model <- create(class = "lineqGP", x = x, y = y, constrType = constraints)
+  model$localParam$m <- n_points
+#  model$bounds[1, ] <- c(constraint_params[["lower_bound"]],constraint_params[["upper_bound"]])
+  model$kernParam$type = kernel_type
+  model$kernParam$par<- c(variance, length_scale)
+  model$varnoise <- data_noise
+  model <- augment(model)
+  
+  # sampling from the model
+  sim.model <- simulate(model, nsim = n_functions, seed = 1, xtest = x)
+  
+  return(sim.model$ysim)
+}
+```
+
+```{r}
+kernel_label = "Squared Exponential"
+    x_orig <-  seq(0, 1, 0.1)
+    y<-c(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,1.0)
+    
+    kernel_params <- hash(
+      "kernel_1" = hash(
+        "variance" = 0.3
+        ,"length_scale" = 1
+        ,"period" = NULL
+        ,"roughness" = NULL
+      ))
+    # TODO draw constrained
+    constraints <- c()
+
+    #  constraints <-append(constraints, "boundedness")
+      constraints <-append(constraints, "monotonicity")
+#      constraints <-append(constraints, "convexity")
+
+    
+    constraint_params <- hash(
+      "lower_bound" = 0,
+      "upper_bound" = 0.5
+    ) 
+    
+    funcs<- simulate_constrained_gp(x_orig, y, kernel_label, kernel_params, constraints, constraint_params, 5)
+    #cat(paste("\n\n","funcs in pool", funcs, "\n\n"))
+ 
+
+    
+        idx <- 1:5
+    idx <- idx[idx <= 100]   # safety
+    
+    
+    data <- data.frame(
+      x = rep(x_orig, length(idx)),
+      f = as.vector(funcs),
+      func = rep(idx, each = length(x_orig))
+    )    
+    
+    cat(paste("\n\n","data", data, "\n\n"))
+    data
+```
+
+```{r}
+      ggplot(data, aes(x=x, y=f, group=func, color=factor(func))) +
+        geom_line(alpha=0.9, linewidth=1) +
+        scale_color_discrete(guide="none") +
+        labs(title="Gaussian Process Prior Samples",
+             subtitle= paste("kernel_title", "Kernel"),
+             x="x", y="f(x)") +
+        theme_minimal(base_size=16)
+```
+```{r}
+# what x range
+x <- seq(0, 2, 0.2)
+m <- 5# support points number?
+u <- seq(0, 1, 1/(m-1)) # locations of support points?
+d  = 1 #dimensions
+#Phi <- basisCompute.lineqGP(x, u, d = 1) d 
+#matplot(Phi, type = "l", lty = 2, main = "Hat basis functions with m = 5")
+
+
+  if (!is.matrix(x) || ncol(x) != d)
+    x <- matrix(x, ncol = d)
+  if (is.list(u) && length(u) == d) {
+    m <- as.integer(lapply(u, length))
+  } else if (is.double(u)) {
+    u <- matrix(u, ncol = d)
+    m <- nrow(u)
+  } else {
+    m <- nrow(u)
+  }
+  
+  # precomputing some terms
+  n <- nrow(x)
+  # delta <- diff(u)
+  
+  # computing the hat basis functions
+  if (d == 1){
+    Phi <- matrix(0, n, m)
+    for (i in 1:length(x)) {
+      for (j in 1:length(u)) {
+        if (x[i] > u[j] + 1e-12) { # there is a numerical stability issue
+          distAbs <- abs((x[i] - u[j])/(u[j+1] - u[j]))
+        } else if (x[i] < u[j]) {
+          distAbs <- abs((x[i] - u[j])/(u[j] - u[j-1]))
+        } else {
+          distAbs <- 0
+        }
+        if (distAbs <= 1)
+          Phi[i, j] <- 1 - distAbs
+      }
+    }
+  } 
+```
+
+```{r}
+
+```
 
