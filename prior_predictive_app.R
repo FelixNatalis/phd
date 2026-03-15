@@ -484,6 +484,8 @@ server <- function(input, output) {
   operation       <- reactiveVal(NULL)
   location        <- reactiveVal(NULL)
   steepness       <- reactiveVal(NULL)
+  x_fixed         <- reactiveVal(NULL)
+  y_fixed         <- reactiveVal(NULL)
   
   rv <- reactiveValues(
     var = FALSE,
@@ -987,6 +989,8 @@ server <- function(input, output) {
         y_train <- y
         x_draw <- seq(0, 1, 0.1)
         data_noise <- 1e-4
+        x_fixed(x_train)
+        y_fixed(y_train)
       }else{
         x_train <- seq(0, 1, 0.1)
         y_train <- x_train
@@ -1318,7 +1322,7 @@ server <- function(input, output) {
                               input$operation,
                               input$kernel_label_2)
         
-        ggplot(gp_data(), aes(
+        plot<-ggplot(gp_data(), aes(
           x = x,
           y = f,
           group = func,
@@ -1333,6 +1337,18 @@ server <- function(input, output) {
             y = "f(x)"
           ) +
           theme_minimal(base_size = 16)
+        
+        if(constrained_check()){
+          plot <- plot +annotate(
+            "point",
+            x = x_fixed(),
+            y = y_fixed(),
+            colour = "red",
+            size = 3
+          )
+        }
+        
+        plot
       }
     }, error = function(e) {
       cat(paste("\nError in gp plot\n", e, "\n"))
