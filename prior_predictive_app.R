@@ -1322,33 +1322,71 @@ server <- function(input, output) {
                               input$operation,
                               input$kernel_label_2)
         
-        plot<-ggplot(gp_data(), aes(
-          x = x,
-          y = f,
-          group = func,
-          color = factor(func)
-        )) +
-          geom_line(alpha = 0.9, linewidth = 1) +
-          scale_color_discrete(guide = "none") +
-          labs(
-            title = "Gaussian Process Prior Samples",
-            subtitle = paste(kernel_title, "Kernel"),
-            x = "x",
-            y = "f(x)"
-          ) +
-          theme_minimal(base_size = 16)
+        lines<- geom_line(
+          data = gp_data(),
+          aes(x = x, y = f, group = func, color = factor(func)),
+          alpha     = 0.9,
+          linewidth = 1
+        )
+        
+        ribbon_data<- NULL
+        CI <- NULL
+        fixed_points <- NULL
+        bounds<- NULL
         
         if(constrained_check()){
-          plot <- plot +annotate(
-            "point",
-            x = x_fixed(),
-            y = y_fixed(),
-            colour = "red",
-            size = 3
+          dat<-gp_data()$f
+          funcs<-matrix(dat, length(dat)/input$nfunc, input$nfunc)
+          qtls <- apply(funcs, 1, quantile, probs =  c(0.05, 0.95))
+          # confidence interval
+          ribbon_data <- data.frame(
+            x    = x_draw,
+            ymin = qtls[1, ],
+            ymax = qtls[2, ]
           )
+          
+          CI<-geom_ribbon(
+            data = ribbon_data,
+            aes(x = x, ymin = ymin, ymax = ymax),
+            fill  = "gray80",
+            alpha = 0.6,
+            inherit.aes = FALSE
+          )
+          
+          fixed_points<-geom_point(
+            data = data.frame(x = x_fixed(), y = y_fixed()),
+            aes(x = x, y = y),
+            color = "black", size = 2
+          )
+          
+          if(input$lower_bound || input$upper_bound){
+          bounds <- ylim(input$lower_bound, input$upper_bound) }
         }
         
-        plot
+        ggplot() +
+          # CI first so lines are drawn on top
+          CI +
+          # The sampled function lines
+          lines +
+          # Training points
+          fixed_points +
+          bounds +
+          labs(
+            x     = "x",
+            y     = "f(x)",
+            title = "Gaussian Process Prior Samples",
+            subtitle= paste(kernel_title, "Kernel"),
+            color = "Function"
+          ) +
+          # Manual legend entries for ribbon + dashed line + points
+          scale_color_discrete() +
+          guides(color = "none") +          # drop per-function color legend if not needed
+          annotate("rect",                  # proxy for the ribbon in the legend
+                   xmin = -Inf, xmax = -Inf,
+                   ymin = -Inf, ymax = -Inf,
+                   fill = "gray80"
+          ) +
+          theme_minimal(base_size=16)
       }
     }, error = function(e) {
       cat(paste("\nError in gp plot\n", e, "\n"))

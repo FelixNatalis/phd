@@ -1220,14 +1220,28 @@ qtls <- apply(funcs$ysim, 1, quantile, probs =  c(0.05, 0.95))
           "point",
           x = x_train,
           y = y_train,
-          colour = "red",
-          size = 3
+          colour = "black",
+          size = 2
         )
       
-      p_1+geom_ribbon(aes(ymin=min(f), ymax=max(f)), linetype=2, alpha=0.1)
       
       
+      
+      p_1+geom_ribbon(aes(ymin=long_lower, ymax=long_upper,
+                  group=func), linetype=2, alpha=0.1)
+      
+     lower<- qtls[1,]
+     upper<- qtls[2,]
+     nfuncs<-5
+     long_lower<-c()
+     long_upper<-c()
+     for(i in seq(1, length(lower), 1)){
+       long_lower<-append(long_lower, rep(lower[i], nfuncs))
+       long_upper<-append(long_upper, rep(upper[i], nfuncs))
+     }
     
+      data$f
+      funcs$ysim
       
 ```
 ```{r}
@@ -1244,6 +1258,77 @@ legend("topleft", c("ytrain","ytest","mean","confidence"),
   polygon(c(seq(0, 1, 0.1), rev(seq(0, 1, 0.1))), c(qtls[2, ], rev(qtls[1, ])),
           col = "gray90", border = NA)
 ```
+
+
+```{r}
+
+
+lines<- geom_line(
+    data = data,
+    aes(x = x, y = f, group = func, color = factor(func)),
+    alpha     = 0.9,
+    linewidth = 1
+  )
+
+ribbon_data<- NULL
+CI <- NULL
+fixed_points <- NULL
+
+if(0){
+
+# Build the ribbon data frame separately (11 rows only)
+ribbon_data <- data.frame(
+  x    = x_draw,
+  ymin = qtls[1, ],
+  ymax = qtls[2, ]
+)
+
+CI<-geom_ribbon(
+    data = ribbon_data,
+    aes(x = x, ymin = ymin, ymax = ymax),
+    fill  = "gray80",
+    alpha = 0.6,
+    inherit.aes = FALSE
+  )
+
+fixed_points<-geom_point(
+    data = data.frame(x = x_train, y = y_train),
+    aes(x = x, y = y),
+    color = "black", size = 2
+  )
+}
+
+ggplot() +
+  NULL+
+  # Ribbon first so lines are drawn on top
+  CI +
+  # The 5 sampled function lines
+  lines +
+  # Training points
+  fixed_points +
+  ylim(0, 1) +
+  labs(
+    x     = "x",
+    y     = "y(x)",
+    title = "Constrained GP model under boundedness & monotonicity conditions",
+    color = "Function"
+  ) +
+  # Manual legend entries for ribbon + dashed line + points
+  scale_color_discrete() +
+  guides(color = "none") +          # drop per-function color legend if not needed
+  annotate("rect",                  # proxy for the ribbon in the legend
+    xmin = -Inf, xmax = -Inf,
+    ymin = -Inf, ymax = -Inf,
+    fill = "gray80"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+
+
 ```{r}
 # Source - https://stackoverflow.com/a/29747072
 # Posted by Ruthger Righart
@@ -1255,6 +1340,23 @@ p<-p+geom_ribbon(aes(ymin=data$lower, ymax=data$upper), linetype=2, alpha=0.1)
 ```
 
 ```{r}
+library(ggplot2)
+# Source - https://stackoverflow.com/q/67810248
+# Posted by logjammin, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-03-16, License - CC BY-SA 4.0
+
+df <- data.frame(weight = c(156.8, 170,  185,   199.0, 203,  208), 
+                lower95 = c(151.2, 165,  181.6, 194.5, 202,  206.4), 
+                upper95 = c(162.8, 175,  187.9, 203.7, 204,  211.9),
+                year =    c(2010,  2014, 2017,  2019,  2020, 2021)) 
+# Source - https://stackoverflow.com/a/67810341
+# Posted by Gregor Thomas
+# Retrieved 2026-03-16, License - CC BY-SA 4.0
+
+ggplot(data = df, aes(x = year, y = weight)) +
+  geom_ribbon(aes(ymin = lower95, ymax = upper95)) +
+  geom_line()
+
 ```
 
 
