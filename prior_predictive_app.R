@@ -1334,8 +1334,11 @@ server <- function(input, output) {
         fixed_points <- NULL
         bounds<- NULL
         
-        if(constrained_check()){
-          dat<-gp_data()$f
+        if(constrained_check()){ 
+          x<- as.vector(gp_data()$x)
+          x_m <- matrix(x, length(x)/input$nfunc, input$nfunc)
+          x_draw<- x_m[,1]
+          dat<-gp_data()$f 
           funcs<-matrix(dat, length(dat)/input$nfunc, input$nfunc)
           qtls <- apply(funcs, 1, quantile, probs =  c(0.05, 0.95))
           # confidence interval
@@ -1353,13 +1356,14 @@ server <- function(input, output) {
             inherit.aes = FALSE
           )
           
+          if(!invalid(x_fixed()) && !invalid(y_fixed())){
           fixed_points<-geom_point(
             data = data.frame(x = x_fixed(), y = y_fixed()),
             aes(x = x, y = y),
             color = "black", size = 2
-          )
+          )}
           
-          if(input$lower_bound || input$upper_bound){
+          if(input$is_lower_bound || input$is_upper_bound){
           bounds <- ylim(input$lower_bound, input$upper_bound) }
         }
         
