@@ -67,6 +67,10 @@ kernel_labels <- c("Squared Exponential", "Matérn", "Linear", "Periodic")
 
 kernel_operation_labels <- c("add", "multiply", "changepoint")
 
+psi <- function(x, steepness, location) {
+  return(1 / (1 + exp(-steepness * (x - location))))
+}
+
 combine_kernels <- function(label_1,
                             label_2,
                             params_1,
@@ -74,7 +78,7 @@ combine_kernels <- function(label_1,
                             operation,
                             x1,
                             x2,
-                            params) {
+                            additional_params) {
   k_1 <- simple_kernel_wrapper(label_1, x1, x2, params = params_1)
   k_2 <- simple_kernel_wrapper(label_2, x1, x2, params = params_2)
   if (operation == "add") {
@@ -83,8 +87,12 @@ combine_kernels <- function(label_1,
     return(k_1 * k_2)
   }
   else if (operation == "changepoint") {
-    # TODO params
-    return(1)
+    steepness <- additional_params[["steepness"]]
+    location <- additional_params[["location"]]
+    return(
+      k_1 * psi(x1, steepness, location) * psi(x2, steepness, location)
+      + k_2 * (1 - psi(x1, steepness, location)) * (1 - psi(x2, steepness, location))
+    )
   }
 }
 
@@ -190,6 +198,7 @@ simulate_gp <- function(x,
                         mean_fun = function(x)
                           0) {
   K <- kernel_wrapper(is_combination, kernel_label, x, x, params = kernel_params)
+  #cat(paste(K))
   L <- chol(K + epsilon * diag(length(x)))
   m <- mean_fun(x)
   f <- m + t(L) %*% rnorm(length(x))
@@ -404,33 +413,9 @@ ui <- page_fillable(
       ),
       card(
         card_header("Specific function values"),
-        layout_columns(
-          numberInput(
-            "x_1",
-            "x_1"
-          ),
-          numberInput(
-            "y_1",
-            "y_1"
-          )
-        ),
-        layout_columns(
-          numberInput(
-            "x_2",
-            "x_2"
-          ),
-          numberInput(
-            "y_2",
-            "y_2"
-          )
-        ),
-        layout_columns(
-          numberInput(
-            "x_3",
-            "x_3"
-          ),
-          numberInput("y_3", "y_3")
-        )
+        layout_columns(numberInput("x_1", "x_1"), numberInput("y_1", "y_1")),
+        layout_columns(numberInput("x_2", "x_2"), numberInput("y_2", "y_2")),
+        layout_columns(numberInput("x_3", "x_3"), numberInput("y_3", "y_3"))
       )
     ),
     
@@ -969,35 +954,34 @@ server <- function(input, output) {
       })
       
     } else{
-      
-      x<- c()
-      y<- c()
-      if(!invalid(input$x_1) && !invalid(input$y_1)){
+      x <- c()
+      y <- c()
+      if (!invalid(input$x_1) && !invalid(input$y_1)) {
         x <- append(x, input$x_1)
         y <- append(y, input$y_1)
       }
-      if(!invalid(input$x_2) && !invalid(input$y_2)){
+      if (!invalid(input$x_2) && !invalid(input$y_2)) {
         x <- append(x, input$x_2)
         y <- append(y, input$y_2)
       }
-      if(!invalid(input$x_3) && !invalid(input$y_3)){
+      if (!invalid(input$x_3) && !invalid(input$y_3)) {
         x <- append(x, input$x_3)
         y <- append(y, input$y_3)
       }
-      if(length(x) > 0){
+      if (length(x) > 0) {
         x_train <- x
         y_train <- y
         x_draw <- seq(0, 1, 0.1)
         data_noise <- 1e-4
         x_fixed(x_train)
         y_fixed(y_train)
-      }else{
+      } else{
         x_train <- seq(0, 1, 0.1)
         y_train <- x_train
         x_draw <- x_train
         data_noise <- 1.5
       }
-        
+      
       
       x_orig <-  seq(0, 1, 0.1) # TODO fix to normal
       y <- x_orig
@@ -1031,7 +1015,7 @@ server <- function(input, output) {
       )
       # cat(paste(roughness()))
       #cat(paste("\nentering simulation\n"))
-
+      
       
       funcs <- simulate_constrained_gp(
         x_train = x_train,
@@ -1322,49 +1306,59 @@ server <- function(input, output) {
                               input$operation,
                               input$kernel_label_2)
         
-        lines<- geom_line(
+        lines <- geom_line(
           data = gp_data(),
-          aes(x = x, y = f, group = func, color = factor(func)),
+          aes(
+            x = x,
+            y = f,
+            group = func,
+            color = factor(func)
+          ),
           alpha     = 0.9,
           linewidth = 1
         )
         
-        ribbon_data<- NULL
+        ribbon_data <- NULL
         CI <- NULL
         fixed_points <- NULL
-        bounds<- NULL
+        bounds <- NULL
         
-        if(constrained_check()){ 
-          x<- as.vector(gp_data()$x)
-          x_m <- matrix(x, length(x)/input$nfunc, input$nfunc)
-          x_draw<- x_m[,1]
-          dat<-gp_data()$f 
-          funcs<-matrix(dat, length(dat)/input$nfunc, input$nfunc)
+        if (constrained_check()) {
+          x <- as.vector(gp_data()$x)
+          x_m <- matrix(x, length(x) / input$nfunc, input$nfunc)
+          x_draw <- x_m[, 1]
+          dat <- gp_data()$f
+          funcs <- matrix(dat, length(dat) / input$nfunc, input$nfunc)
           qtls <- apply(funcs, 1, quantile, probs =  c(0.05, 0.95))
           # confidence interval
-          ribbon_data <- data.frame(
-            x    = x_draw,
-            ymin = qtls[1, ],
-            ymax = qtls[2, ]
-          )
+          ribbon_data <- data.frame(x    = x_draw,
+                                    ymin = qtls[1, ],
+                                    ymax = qtls[2, ])
           
-          CI<-geom_ribbon(
+          CI <- geom_ribbon(
             data = ribbon_data,
-            aes(x = x, ymin = ymin, ymax = ymax),
+            aes(
+              x = x,
+              ymin = ymin,
+              ymax = ymax
+            ),
             fill  = "gray80",
             alpha = 0.6,
             inherit.aes = FALSE
           )
           
-          if(!invalid(x_fixed()) && !invalid(y_fixed())){
-          fixed_points<-geom_point(
-            data = data.frame(x = x_fixed(), y = y_fixed()),
-            aes(x = x, y = y),
-            color = "black", size = 2
-          )}
+          if (!invalid(x_fixed()) && !invalid(y_fixed())) {
+            fixed_points <- geom_point(
+              data = data.frame(x = x_fixed(), y = y_fixed()),
+              aes(x = x, y = y),
+              color = "black",
+              size = 2
+            )
+          }
           
-          if(input$is_lower_bound || input$is_upper_bound){
-          bounds <- ylim(input$lower_bound, input$upper_bound) }
+          if (input$is_lower_bound || input$is_upper_bound) {
+            bounds <- ylim(input$lower_bound, input$upper_bound)
+          }
         }
         
         ggplot() +
@@ -1379,18 +1373,22 @@ server <- function(input, output) {
             x     = "x",
             y     = "f(x)",
             title = "Gaussian Process Prior Samples",
-            subtitle= paste(kernel_title, "Kernel"),
+            subtitle = paste(kernel_title, "Kernel"),
             color = "Function"
           ) +
           # Manual legend entries for ribbon + dashed line + points
           scale_color_discrete() +
           guides(color = "none") +          # drop per-function color legend if not needed
-          annotate("rect",                  # proxy for the ribbon in the legend
-                   xmin = -Inf, xmax = -Inf,
-                   ymin = -Inf, ymax = -Inf,
-                   fill = "gray80"
+          annotate(
+            "rect",
+            # proxy for the ribbon in the legend
+            xmin = -Inf,
+            xmax = -Inf,
+            ymin = -Inf,
+            ymax = -Inf,
+            fill = "gray80"
           ) +
-          theme_minimal(base_size=16)
+          theme_minimal(base_size = 16)
       }
     }, error = function(e) {
       cat(paste("\nError in gp plot\n", e, "\n"))
