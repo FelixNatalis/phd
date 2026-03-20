@@ -202,10 +202,12 @@ simulate_gp <- function(x,
   L <- chol(K + epsilon * diag(length(x)))
   m <- mean_fun(x)
   f <- m + t(L) %*% rnorm(length(x))
+  cat(paste("\neeee\n"))
+  cat(paste(f))
   
   # noise
   eps <- sigma_noise * rnorm(length(x))
-  
+
   drop(f + eps)
 }
 
