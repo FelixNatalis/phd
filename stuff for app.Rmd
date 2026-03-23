@@ -1589,7 +1589,7 @@ combine_kernels <- function(label_1,
 
 ```{r}
 n_functions = 5
-x_orig <- seq(-30, 30, length.out = 58) # -10 10 10 ok # 20 bad # 15 ok # 19 ok
+x_orig <- seq(-30, 30, length.out = 200) # -10 10 10 ok # 20 bad # 15 ok # 19 ok
 kernel_label <- c("Squared Exponential", "Squared Exponential")
         kernel_params <- hash(
           "kernel_1" = hash(
@@ -1630,12 +1630,12 @@ funcs <- replicate(
         )
 
 #----
-sim<- simulate_gp(
-            x_orig,
-            TRUE,
-            kernel_label,
-            kernel_params
-          )
+# sim<- simulate_gp(
+#             x_orig,
+#             TRUE,
+#             kernel_label,
+#             kernel_params
+#           )
 #----
 
 
@@ -1689,5 +1689,79 @@ funcs_interp <- apply(funcs[, idx, drop = FALSE], 2, function(f) {
             fill = "gray80"
           ) +
           theme_minimal(base_size = 16)
+```
+
+#-----------------------------------fix?
+
+```{r}
+# adaptive jitter
+simulate_gp <- function(x, is_combination, kernel_label, kernel_params,
+                        sigma_noise = 1e-3, mean_fun = function(x) 0) {
+  K <- kernel_wrapper(is_combination, kernel_label, x, x, params = kernel_params)
+  
+  # Adaptive jitter: start small, increase if chol fails
+  jitter <- 1e-6
+  L <- NULL
+  for (attempt in 1:5) {
+    L <- tryCatch(
+      chol(K + jitter * diag(length(x))),
+      error = function(e) NULL
+    )
+    if (!is.null(L)) break
+    jitter <- jitter * 10
+    message(sprintf("Cholesky failed, retrying with jitter = %.2e", jitter))
+  }
+  if (is.null(L)) stop("Matrix not PSD even after jitter increase. Check kernel.")
+  message(sprintf("Success, jitter = %.2e", jitter))
+  m <- mean_fun(x)
+  f <- m + t(L) %*% rnorm(length(x))
+  eps <- sigma_noise * rnorm(length(x))
+  drop(f + eps)
+}
+```
+
+```{r}
+make_psd <- function(K, jitter = 1e-6) {
+  K <- (K + t(K)) / 2          # force exact symmetry
+  eig <- eigen(K, symmetric = TRUE)
+  
+  # If any eigenvalue is negative, the matrix isn't PSD
+  min_eig <- min(eig$values)
+  if (min_eig < 0) {
+    message(sprintf("Kernel has negative eigenvalue: %.4e — repairing", min_eig))
+    # Clip negative eigenvalues to zero, add jitter
+    eig$values <- pmax(eig$values, 0) + jitter
+    K <- eig$vectors %*% diag(eig$values) %*% t(eig$vectors)
+  } else {
+    K <- K + jitter * diag(nrow(K))
+  }
+  K
+}
+```
+
+
+```{r}
+# supporting matrix function
+simulate_gp <- function(x,
+                        is_combination,
+                        kernel_label,
+                        kernel_params,
+                        sigma_noise = 1e-3,
+                        mean_fun = function(x)
+                          0) {
+  K <- kernel_wrapper(is_combination, kernel_label, x, x, params = kernel_params)
+
+K <- make_psd(K)           # <-- add this
+L <- chol(K)
+
+  m <- mean_fun(x)
+  f <- m + t(L) %*% rnorm(length(x))
+  
+  # noise
+  eps <- sigma_noise * rnorm(length(x))
+
+  drop(f + eps)
+  
+}
 ```
 

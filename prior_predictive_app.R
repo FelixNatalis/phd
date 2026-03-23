@@ -89,9 +89,10 @@ combine_kernels <- function(label_1,
   else if (operation == "changepoint") {
     steepness <- additional_params[["steepness"]]
     location <- additional_params[["location"]]
+    psi_total <- outer(psi(x1, steepness, location), psi(x2, steepness, location))
+    psi_total_rev <- outer((1 - psi(x1, steepness, location)), (1 - psi(x2, steepness, location)))
     return(
-      k_1 * psi(x1, steepness, location) * psi(x2, steepness, location)
-      + k_2 * (1 - psi(x1, steepness, location)) * (1 - psi(x2, steepness, location))
+      k_1 * psi_total+ k_2 *psi_total_rev 
     )
   }
 }
@@ -190,6 +191,22 @@ simple_kernel_wrapper <- function(kernel_label, x1, x2, params) {
 
 #-------------------------------------------------------------------------------
 # Drawing GP
+make_psd <- function(K, jitter = 1e-6) {
+  K <- (K + t(K)) / 2          # force exact symmetry
+  eig <- eigen(K, symmetric = TRUE)
+  
+  min_eig <- min(eig$values)
+  if (min_eig < 0) {
+    message(sprintf("Kernel has negative eigenvalue: %.4e — repairing", min_eig))
+    # Clip negative eigenvalues to zero, add jitter
+    eig$values <- pmax(eig$values, 0) + jitter
+    K <- eig$vectors %*% diag(eig$values) %*% t(eig$vectors)
+  } else {
+    K <- K + jitter * diag(nrow(K))
+  }
+  K
+}
+
 simulate_gp <- function(x,
                         is_combination,
                         kernel_label,
@@ -198,12 +215,12 @@ simulate_gp <- function(x,
                         mean_fun = function(x)
                           0) {
   K <- kernel_wrapper(is_combination, kernel_label, x, x, params = kernel_params)
-  #cat(paste(K))
-  L <- chol(K + epsilon * diag(length(x)))
+  K <- make_psd(K) 
+  L <- chol(K)
   m <- mean_fun(x)
   f <- m + t(L) %*% rnorm(length(x))
-  cat(paste("\neeee\n"))
-  cat(paste(f))
+  #cat(paste("\neeee\n"))
+  #cat(paste(f))
   
   # noise
   eps <- sigma_noise * rnorm(length(x))
