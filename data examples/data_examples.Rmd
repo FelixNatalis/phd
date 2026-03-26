@@ -3,7 +3,35 @@ title: "Untitled"
 output: html_document
 date: "2026-03-23"
 ---
+
 ```{r}
+library(tidyverse)
+library(dplyr)
+library(stringr)
+```
+
+
+```{r}
+data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
+names(data)[names(data)=="...1"] <- "datapoint"
+names<- colnames(data)
+mood_names <- names[grepl( "mood_", names, fixed = TRUE)]
+mood_data<-data[c("datapoint",mood_names)]
+mood_data<-data[c("datapoint", "mood_satisfi")]
+```
+
+```{r}
+library(ggplot2)
+library(reshape2)
+
+set.seed(123)
+
+mdf <- melt(mood_data[1:300,],id.vars="datapoint")
+
+ggplot(mdf, aes( x=datapoint, y=value, colour=variable, group=variable )) + 
+  geom_line()# +
+  #scale_color_manual(values=c("y1"="black","y2"="red","y3"="orange")) +
+  #scale_linetype_manual(values=c("y1"="solid","y2"="solid","y3"="dashed"))
 
 ```
 
