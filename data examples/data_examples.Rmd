@@ -12,7 +12,9 @@ library(stringr)
 
 
 ```{r}
-data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
+#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
+data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
+
 names(data)[names(data)=="...1"] <- "datapoint"
 names<- colnames(data)
 mood_names <- names[grepl( "mood_", names, fixed = TRUE)]
@@ -21,12 +23,13 @@ mood_data<-data[c("datapoint", "mood_satisfi")]
 ```
 
 ```{r}
+
 library(ggplot2)
 library(reshape2)
 
 set.seed(123)
 
-mdf <- melt(mood_data[1:300,],id.vars="datapoint")
+mdf <- melt(mood_data[1:500,],id.vars="datapoint")
 
 ggplot(mdf, aes( x=datapoint, y=value, colour=variable, group=variable )) + 
   geom_line()# +
@@ -35,3 +38,439 @@ ggplot(mdf, aes( x=datapoint, y=value, colour=variable, group=variable )) +
 
 ```
 
+```{r}
+required <- c("tidyverse", "lubridate", "scales", "patchwork", "viridis")
+new      <- required[!required %in% installed.packages()[, "Package"]]
+if (length(new)) install.packages(new, repos = "https://cloud.r-project.org")
+ 
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(lubridate)
+  library(scales)
+  library(patchwork)
+  library(viridis)
+})
+ 
+```
+
+```{r}
+df <- data %>%
+  mutate(
+    # --- temporal parsing ---
+    date_parsed = dmy(date),
+    hour        = hour(hms(beeptime)),
+    mood        = as.integer(phy_tired),#  mood_irritat, mood_satisfi, mood_enthus, mood_down, mood_lonely, phy_tired
+ 
+    # --- derived time components ---
+    year      = year(date_parsed),
+    month_num = month(date_parsed),
+    month     = month(date_parsed, label = TRUE, abbr = TRUE),
+    week      = isoweek(date_parsed),
+    wday_num  = wday(date_parsed, week_start = 1),
+    wday      = wday(date_parsed, label = TRUE, abbr = TRUE, week_start = 1)
+  ) %>%
+  filter(!is.na(date_parsed), mood >= 1, mood <= 6)
+ 
+```
+
+```{r}
+max(df$date_parsed) #"2012-08-13" "2013-04-08"
+```
+
+
+```{r}
+# one row per calendar day
+daily <- df %>%
+  group_by(date_parsed, year, month, month_num, week, wday, wday_num) %>%
+  summarise(
+    mood_mean = mean(mood),
+    mood_sd   = sd(mood),
+    n_beeps   = n(),
+    .groups   = "drop"
+  )
+ 
+# one row per ISO week
+weekly <- df %>%
+  group_by(year, week) %>%
+  summarise(
+    mood_mean  = mean(mood),
+    n          = n(),
+    week_start = min(date_parsed),
+    .groups    = "drop"
+  )
+ 
+# one row per calendar month
+monthly <- df %>%
+  group_by(year, month_num, month) %>%
+  summarise(
+    mood_mean = mean(mood),
+    mood_se   = sd(mood) / sqrt(n()),
+    n         = n(),
+    .groups   = "drop"
+  ) %>%
+  mutate(date_label = as.Date(paste(year, month_num, "01", sep = "-")))
+ 
+# profile by hour of day
+hourly <- df %>%
+  group_by(hour) %>%
+  summarise(
+    mood_mean = mean(mood),
+    mood_se   = sd(mood) / sqrt(n()),
+    n         = n(),
+    .groups   = "drop"
+  )
+ 
+# profile by weekday
+wday_agg <- df %>%
+  group_by(wday, wday_num) %>%
+  summarise(
+    mood_mean = mean(mood),
+    mood_se   = sd(mood) / sqrt(n()),
+    n         = n(),
+    .groups   = "drop"
+  ) %>%
+  arrange(wday_num)
+ 
+```
+
+```{r}
+clr_bg     <- "#FFFFFF" #"#0f1117"
+clr_panel  <- "#FFFFFF"#"#181b24"
+clr_grid   <- "#262b38"
+clr_text   <- "#c8cfe0"
+clr_sub    <- "#6b7694"
+clr_line   <- "#7eb8f7"
+clr_accent <- "#f97316"
+clr_pos    <- "#4ade80"
+clr_mid    <- "#f0c040"
+clr_neg    <- "#fb7185"
+ 
+mood_gradient <- scale_color_gradient2(
+  low = clr_neg, mid = clr_mid, high = clr_pos,
+  midpoint = 3.5, guide = "none"
+)
+mood_fill_gradient <- scale_fill_gradient2(
+  low = clr_neg, mid = clr_mid, high = clr_pos,
+  midpoint = 3.5, guide = "none"
+)
+ 
+theme_mood <- function(base_size = 12) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      plot.background  = element_rect(fill = clr_bg,    color = NA),
+      panel.background = element_rect(fill = clr_panel, color = NA),
+      panel.grid.major = element_line(color = clr_grid, linewidth = .3),
+      panel.grid.minor = element_blank(),
+      axis.text        = element_text(color = clr_sub,  size = rel(.85)),
+      axis.title       = element_text(color = clr_text, size = rel(.9)),
+      plot.title       = element_text(color = clr_text, size = rel(1.15),
+                                      face = "bold", margin = margin(b = 3)),
+      plot.subtitle    = element_text(color = clr_sub,  size = rel(.82),
+                                      margin = margin(b = 8)),
+      legend.background = element_rect(fill = clr_panel, color = NA),
+      legend.text       = element_text(color = clr_sub),
+      legend.title      = element_text(color = clr_text),
+      strip.text        = element_text(color = clr_text, face = "bold"),
+      strip.background  = element_rect(fill = clr_grid,  color = NA),
+      plot.margin       = margin(12, 14, 10, 14)
+    )
+}
+theme_set(theme_mood())
+ 
+grand_mean <- mean(df$mood, na.rm = TRUE)
+ 
+```
+
+```{r}
+# important: overall
+## 4a. Overall trajectory — raw daily means + LOESS ───────────────────────────
+p_overall <- ggplot(daily, aes(date_parsed, mood_mean)) +
+  geom_point(aes(color = mood_mean, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+  mood_gradient +
+  scale_y_continuous(limits = c(1, 6), breaks = 1:6) +
+    scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "Daily mean · LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood satisfaction (1–6)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+ 
+
+
+ ## 4c. Monthly line + SE ribbon ───────────────────────────────────────────────
+p_monthly <- ggplot(monthly, aes(date_label, mood_mean)) +
+  geom_ribbon(
+    aes(ymin = mood_mean - mood_se, ymax = mood_mean + mood_se),
+    fill = clr_line, alpha = .2
+  ) +
+  geom_line(color = clr_line, linewidth = .9) +
+  geom_point(aes(size = n, color = mood_mean)) +
+  mood_gradient +
+  geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+  scale_size_continuous(range = c(1.5, 5), name = "N beeps") +
+  scale_y_continuous(limits = c(1, 6), breaks = 1:6) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b\n%Y") +
+  labs(
+    title    = "Monthly Mood Averages",
+    subtitle = "Line ± 1 SE ribbon · point size = number of beeps",
+    x = NULL, y = "Mean mood"
+  ) +
+  theme(legend.position = "right")
+ 
+
+# important: weekly
+## 4e. Day-of-week bar chart ───────────────────────────────────────────────────
+p_wday <- ggplot(wday_agg, aes(wday_num, mood_mean)) +
+    geom_ribbon(
+    aes(ymin = mood_mean - mood_se, ymax = mood_mean + mood_se),
+    fill = clr_line, alpha = .2
+  ) +
+  geom_line(color = clr_line, linewidth = .9)+
+  # geom_errorbar(
+  #   aes(ymin = mood_mean - mood_se, ymax = mood_mean + mood_se),
+  #   width = .2, color = clr_text, linewidth = .5
+  # )+
+    geom_point(aes(color = mood_mean, size = n)) +
+  mood_gradient +
+  geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+    scale_size_continuous(range = c(1.5, 5), name = "N") +
+  scale_x_continuous(
+    breaks = seq(1, 7, 1),
+    labels = paste0(c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"))
+  ) +
+  scale_y_continuous(limits = c(0, 6), breaks = 1:6) +
+  labs(
+    title    = "Mood by Day of Week",
+    subtitle = "Mean ± 1 SE · dashed = grand mean",
+    x = NULL, y = "Mean mood"
+  )
+ 
+
+ 
+ # important: hourly
+## 4f. Hour-of-day profile ────────────────────────────────────────────────────
+p_hour <- ggplot(hourly, aes(hour, mood_mean)) +
+  geom_ribbon(
+    aes(ymin = mood_mean - mood_se, ymax = mood_mean + mood_se),
+    fill = clr_line, alpha = .2
+  ) +
+  geom_line(color = clr_line, linewidth = .9) +
+  geom_point(aes(color = mood_mean, size = n)) +
+  mood_gradient +
+    geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+    scale_size_continuous(range = c(1.5, 5), name = "N") +
+  scale_x_continuous(
+    breaks = seq(6, 23, 1),
+    labels = paste0(seq(6, 23, 1), ":00")
+  ) +
+  scale_y_continuous(limits = c(1, 6), breaks = 1:6) +
+  labs(
+    title    = "Mood by Hour of Day",
+    subtitle = "Mean ± 1 SE across all beeps at that hour",
+    x = "Hour", y = "Mean mood"
+  )
+
+p_overall
+p_monthly
+ p_wday
+p_hour
+
+
+```
+
+```{r}
+# unimportant
+## 4b. Weekly bar chart + LOESS ───────────────────────────────────────────────
+p_weekly <- ggplot(weekly, aes(week_start, mood_mean)) +
+  geom_col(aes(fill = mood_mean), width = 5, alpha = .85) +
+  geom_smooth(
+    method = "loess", span = .2, se = FALSE,
+    color = clr_line, linewidth = 1
+  ) +
+  scale_fill_gradient2(
+    low = clr_neg, mid = clr_mid, high = clr_pos,
+    midpoint = 3.5, name = "Mood"
+  ) +
+  scale_y_continuous(limits = c(0, 6), breaks = 0:6) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Weekly Mood Averages",
+    subtitle = "Each bar = one ISO week · LOESS trend overlay",
+    x = NULL, y = "Mean mood"
+  ) +
+  theme(
+    axis.text.x      = element_text(angle = 30, hjust = 1),
+    legend.position  = "right"
+  )
+ p_weekly
+
+## 4d. Year-over-year seasonal overlay ───────────────────────────────────────
+p_yoy <- ggplot(monthly,
+                aes(month_num, mood_mean,
+                    color = factor(year), group = year)) +
+  geom_ribbon(
+    aes(ymin = mood_mean - mood_se, ymax = mood_mean + mood_se),
+    fill = clr_line, alpha = .2
+  )+
+  geom_line(linewidth = .9, alpha = .85) +
+  geom_point(size = 2) +
+  scale_color_viridis_d(option = "C", begin = .15, end = .9, name = "Year") +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  scale_y_continuous(limits = c(1, 6), breaks = 1:6) +
+  labs(
+    title    = "Year-over-Year Seasonal Pattern",
+    subtitle = "Monthly mean per year overlaid for comparison",
+    x = NULL, y = "Mean mood"
+  ) +
+  theme(legend.position = "right")
+ p_yoy
+ 
+
+
+
+## 4g. Calendar heatmap — week × weekday, faceted by year ─────────────────────
+heat_data <- daily %>%
+  group_by(year, week, wday, wday_num) %>%
+  summarise(mood_mean = mean(mood_mean), .groups = "drop")
+ 
+p_heat <- ggplot(heat_data,
+                 aes(x = week, y = fct_rev(wday), fill = mood_mean)) +
+  geom_tile(color = clr_bg, linewidth = .3) +
+  facet_wrap(~year, ncol = 1) +
+  scale_fill_gradient2(
+    low = clr_neg, mid = clr_mid, high = clr_pos,
+    midpoint = 3.5, na.value = clr_panel,
+    name = "Mood", limits = c(1, 6)
+  ) +
+  scale_x_continuous(
+    breaks = c(1, 13, 26, 39, 52),
+    labels = c("Jan", "Apr", "Jul", "Oct", "Dec")
+  ) +
+  labs(
+    title    = "Calendar Heatmap — Daily Mood",
+    subtitle = "Each tile = one day (mean of all beeps that day)",
+    x = "Week of year", y = NULL
+  ) +
+  theme(
+    panel.grid   = element_blank(),
+    axis.text.y  = element_text(size = 8),
+    legend.position = "right"
+  )
+
+## 4h. Distribution violin + boxplot by year ──────────────────────────────────
+p_dist <- df %>%
+  mutate(year = factor(year)) %>%
+  ggplot(aes(year, mood, fill = year)) +
+  geom_violin(alpha = .55, trim = FALSE, linewidth = .3) +
+  geom_boxplot(width = .12, outlier.shape = NA,
+               color = clr_text, alpha = .7) +
+  scale_fill_viridis_d(option = "C", begin = .15, end = .9, guide = "none") +
+  scale_y_continuous(breaks = 1:6) +
+  labs(
+    title    = "Mood Distribution by Year",
+    subtitle = "Violin + box · each point = one beep",
+    x = NULL, y = "Mood satisfaction (1–6)"
+  )
+```
+
+```{r}
+# ── 5.  Compose pages with patchwork ─────────────────────────────────────────
+ann_theme <- theme(
+  plot.background = element_rect(fill = clr_bg, color = NA),
+  plot.title      = element_text(color = clr_text, size = 16,
+                                 face = "bold", margin = margin(b = 4)),
+  plot.subtitle   = element_text(color = clr_sub,  size = 11,
+                                 margin = margin(b = 6))
+)
+ 
+## Page 1 — longitudinal overview
+page1 <- (p_overall / p_weekly / p_monthly) +
+  plot_annotation(
+    title    = "Mood Over Time — Overview",
+    subtitle = "Beep-level data aggregated to daily → weekly → monthly",
+    theme    = ann_theme
+  )
+ 
+## Page 2 — cyclical patterns
+page2 <- (p_yoy | p_dist) / (p_wday | p_hour) +
+  plot_annotation(
+    title    = "Mood Patterns — Seasonal, Weekly & Daily Rhythms",
+    theme    = ann_theme
+  )
+ 
+## Page 3 — calendar heatmap (height scales with number of years)
+n_years <- n_distinct(df$year)
+page3   <- p_heat +
+  plot_annotation(
+    title = "Calendar Heatmap — Daily Mood Satisfaction",
+    theme = ann_theme
+  )
+ 
+
+# ── 6.  Save ─────────────────────────────────────────────────────────────────
+
+ggsave("overall_tir.png", p_overall, width = 10, height = 6,
+        dpi = 180)
+ggsave("month_tir.png", p_monthly, width = 10, height = 6,
+        dpi = 180)
+ggsave("wday_tir.png", p_wday, width = 10, height = 6,
+        dpi = 180)
+ggsave("hour_tir.png", p_hour, width = 10, height = 6,
+        dpi = 180)
+# ggsave("mood_overview.png",  page1, width = 14, height = 16,
+#        dpi = 180, bg = clr_bg)
+# ggsave("mood_patterns.png",  page2, width = 16, height = 12,
+#        dpi = 180, bg = clr_bg)
+# ggsave("mood_heatmap.png",   page3, width = 16,
+#        height = pmax(4, n_years * 4) + 3,
+#        dpi = 180, bg = clr_bg)
+ 
+message("Saved: mood_overview.png  |  mood_patterns.png  |  mood_heatmap.png")
+```
+
+
+```{r}
+ # data 1476
+ # df 1473
+ # daily 238 by n_beeps, 1473 , hourly, monthly, wday_agg, all good
+p_ov <- ggplot(df, aes(datapoint, mood_satisfi)) +
+  geom_point(aes(color = clr_text), size = 1, alpha = .45)
+ 
+p_ov
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
