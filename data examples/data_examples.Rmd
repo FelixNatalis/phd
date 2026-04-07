@@ -528,30 +528,50 @@ library(GauPro)
 ```
 
 ```{r}
-df_sh <- df_shorter[1:200,]
+
+ggsave("gp12.png", gpp, width = 10, height = 6,
+        dpi = 180)
+
+
+df_sh <- df_shorter[1:1200,]
 gp <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
-plot(gp)
+gpp1<-plot(gp)
 
 gp2 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
-plot(gp2)
+gpp2<-plot(gp2)
 
 gp3 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
-plot(gp3)
+gpp3<-plot(gp3)
 
 gp4 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
-plot(gp4)
+gpp4<-plot(gp4)
 
 gp5 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
-plot(gp5)
+gpp5<-plot(gp5)
 
 gp6 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
-plot(gp6)
+gpp6<-plot(gp6)
 
 gp7 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
-plot(gp7)
+gpp7<-plot(gp7)
 
 gp8 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
-plot(gp8)
+gpp8<-plot(gp8)
+
+gp9 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+gpp<-plot(gp9)
+
+gp10 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+gpp<-plot(gp10)
+
+gp11 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+gpp<-plot(gp11)
+
+gp12 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+gpp<-plot(gp12)
+
+gp13 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+plot(gp13)
 ```
 
 ```{r}
