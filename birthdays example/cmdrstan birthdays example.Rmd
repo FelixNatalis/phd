@@ -1,0 +1,424 @@
+---
+title: "Birthdays example"
+output: html_document
+date: "2026-02-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# we recommend running this in a fresh R session or restarting your current session
+#install.packages("cmdstanr", repos = c('https://stan-dev.r-universe.dev', getOption("repos")))
+#install.packages("tictoc")
+#install.packages("posterior")
+#install.packages("tinytable")
+#install.packages("loo")
+#install.packages("patchwork")
+#install.packages("ggrepel")
+library(cmdstanr)
+library(tidyverse)
+library(tictoc)
+mytoc <- \() {
+  toc(func.toc=\(tic, toc, msg) {
+    sprintf("%s took %s sec", msg, as.character(signif(toc-tic, 2)))
+  })}
+library(posterior)
+options(pillar.neg = FALSE, pillar.subtle=FALSE, pillar.sigfig=2)
+library(tinytable)
+options(tinytable_format_num_fmt = "significant_cell", tinytable_format_digits = 2, tinytable_tt_digits=2)
+library(loo)
+library(bayesplot)
+theme_set(bayesplot::theme_default(base_family = "sans"))
+library(patchwork)
+library(ggrepel)
+set1 <- RColorBrewer::brewer.pal(7, "Set1")
+
+```
+
+```{r}
+Sys.setlocale("LC_TIME", "en_GB.utf8")
+birthdays <- read_csv( "births_usa_1969.csv")
+birthdays <- birthdays |>
+  mutate(date = as.Date("1968-12-31") + id,
+         births_relative100 = births/mean(births)*100)
+birthdays |>
+  ggplot(aes(x=date, y=births)) +
+  geom_point(color=set1[2]) +
+  labs(x="Date", y="Relative number of births")
+```
+
+```{r}
+birthdays |>
+  ggplot(aes(x=date, y=births_relative100)) +
+  geom_point(color=set1[2]) +
+  geom_hline(yintercept=100, color="gray") +
+  labs(x="Date", y="Relative births per day")
+```
+
+```{r}
+birthdays |>
+  group_by(day_of_year2) |>
+  summarise(meanbirths=mean(births_relative100)) |>
+  ggplot(aes(x=as.Date("1986-12-31")+day_of_year2, y=meanbirths)) +
+  geom_point(color=set1[2]) +
+  geom_hline(yintercept=100, color='gray') +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  labs(x="Day of year", y="Relative births per day of year")
+```
+
+```{r}
+birthdays |>
+  group_by(day_of_week) |>
+  summarise(meanbirths=mean(births_relative100)) |>
+  ggplot(aes(x=day_of_week, y=meanbirths)) +
+  geom_point(color=set1[2], size=4) +
+  geom_hline(yintercept=100, color='gray') +
+  scale_x_continuous(breaks = 1:7, labels=c('Mon','Tue','Wed','Thu','Fri','Sat','Sun')) +
+  labs(x="Day of week", y="Relative number of births of week")
+```
+
+```{r}
+model1 <- cmdstan_model(stan_file = "gpbf1.stan")
+```
+
+```{r}
+standata1 <- list(x=birthdays$id,
+                  y=log(birthdays$births_relative100),
+                  N=length(birthdays$id),
+                  c_f1=1.5, # factor c of basis functions for GP for f1
+                  M_f1=20)  # number of basis functions for GP for f1
+```
+
+```{r}
+tic('Finding MAP for model 1 with optimization')
+opt1 <- model1$optimize(data = standata1, init=0, algorithm='bfgs',
+                        jacobian=TRUE, output_dir="output")
+```
+
+```{r}
+mytoc()
+```
+
+```{r}
+odraws1 <- opt1$draws()
+subset(odraws1, variable=c('intercept','sigma_f1','lengthscale_f1','sigma')) |>
+  as.data.frame() |>
+  tt()
+```
+
+```{r}
+oEf <- exp(as.numeric(subset(odraws1, variable='f')))
+birthdays |>
+  mutate(oEf = oEf) |>
+  ggplot(aes(x=date, y=births_relative100)) +
+  geom_point(color=set1[2], alpha=0.2) +
+  geom_line(aes(y=oEf), color=set1[1]) +
+  geom_hline(yintercept=100, color='gray') +
+  labs(x="Date", y="Relative number of births")
+```
+
+```{r}
+tic('Sampling from Laplace approximation of model 1 posterior')
+lap1 <- model1$laplace(data = standata1, mode=opt1, draws=400,
+                       refresh=0, output_dir="output")
+
+```
+
+```{r}
+mytoc()
+```
+
+```{r}
+ldraws1 <- lap1$draws()
+summarise_draws(subset(ldraws1, variable=c('intercept','sigma_f1','lengthscale_f1','sigma')),
+                default_summary_measures()) |>
+  tt()
+```
+
+```{r}
+ldraws1 |>
+  mutate_variables(lw = lp__-lp_approx__, w=exp(lw-max(lw))) |>
+  subset_draws(variable="w") |>
+  summarise_draws(pareto_diags, .args = list(tail='right')) |>
+  tt()
+```
+
+```{r}
+tic('MCMC sampling from model 1 posterior')
+fit1 <- model1$sample(data=standata1, iter_warmup=100, iter_sampling=100,
+                      chains=4, parallel_chains=4, seed=3896, output_dir="output")
+```
+
+```{r}
+mytoc()
+```
+
+```{r}
+tic('Sampling from Pathfinder approximation of model 1 posterior')
+pth1 <- model1$pathfinder(data = standata1, init=0.1,
+                          num_paths=10, single_path_draws=40, draws=400,
+                          history_size=100, max_lbfgs_iters=100,
+                          refresh=0, output_dir="output")
+```
+
+```{r}
+mytoc()
+```
+
+```{r}
+pdraws1 <- pth1$draws()
+summarise_draws(subset(pdraws1, variable=c('lp__')), n_distinct) |>
+  tt()
+```
+
+```{r}
+summarise_draws(subset(pdraws1, variable=c('intercept','sigma_f1','lengthscale_f1','sigma')),
+                default_summary_measures()) |>
+  tt()
+```
+
+```{r}
+tic('MCMC sampling from model 1 posterior with Pathfinder initialization')
+fit1 <- model1$sample(data=standata1, iter_warmup=100, iter_sampling=100,
+                      chains=4, parallel_chains=4,
+                      init=pth1, output_dir="output")
+```
+
+```{r}
+mytoc()
+```
+
+```{r}
+draws1 <- fit1$draws()
+summarise_draws(subset(draws1, variable=c('intercept','sigma_f1','lengthscale_f1','sigma'))) |>
+  tt()
+```
+
+```{r}
+mcmc_trace(draws1, regex_pars=c('intercept','sigma_f1','lengthscale_f1','sigma'))
+```
+
+```{r}
+draws1 <- as_draws_matrix(draws1)
+Ef <- exp(apply(subset(draws1, variable='f'), 2, median))
+birthdays |>
+  mutate(Ef = Ef) |>
+  ggplot(aes(x=date, y=births_relative100)) +
+  geom_point(color=set1[2], alpha=0.2) +
+  geom_line(aes(y=Ef), color=set1[1]) +
+  geom_hline(yintercept=100, color='gray') +
+  labs(x="Date", y="Relative number of births")
+```
+
+```{r}
+birthdays |>
+  mutate(Ef = Ef,
+         oEf = oEf) |>
+  ggplot(aes(x=Ef, y=oEf)) +
+  geom_point(color=set1[2]) +
+  geom_abline() +
+  labs(x="Ef from short Markov chain", y="Ef from optimizing")
+```
+
+```{r}
+model1b <- cmdstan_model(stan_file = "gpbf1b.stan")
+```
+
+```{r}
+tic('Sampling from Pathfinder approximation of model 1b posterior')
+pth1b <- model1b$pathfinder(data = standata1, init=0.1,
+                            num_paths=10, single_path_draws=40, draws=400,
+                            history_size=50, max_lbfgs_iters=100,
+                            refresh=0, output_dir="output")
+```
+
+```{r}
+mytoc()
+```
+
+```{r}
+tic('MCMC sampling from model 1b posterior with Pathfinder initialization')
+fit1b <- model1b$sample(data=standata1, iter_warmup=100, iter_sampling=100,
+                        chains=4, parallel_chains=4,
+                        init=pth1b, output_dir="output")
+```
+
+```{r}
+mytoc()
+```
+
+```{r}
+draws1b <- fit1b$draws()
+summarise_draws(subset(draws1b, variable=c('sigma_f1','lengthscale_f1','sigma'))) |>
+  tt()
+```
+
+```{r}
+mcmc_trace(draws1b, regex_pars=c('sigma_f1','lengthscale_f1','sigma'))
+```
+
+```{r}
+variables <- names(model1b$variables()$parameters)
+sp<-summarise_draws(subset(pth1b$draws(), variable=variables))
+sm<-summarise_draws(subset(draws1b, variable=variables))
+ggplot(data=NULL, aes(x=sm$mean, xmin=sm$mean-sm$sd, xmax=sm$mean+sm$sd,
+                      y=sp$mean, ymin=sp$mean-sp$sd, ymax=sp$mean+sp$sd,
+                      label=sm$variable)) +
+  geom_point(color=4) +
+  geom_errorbar(width=0,color=4) +
+  geom_errorbarh(height=0,color=4) +
+  geom_text_repel() +
+  geom_abline(linetype='dotted') +
+  labs(x='MCMC mean and sd', y='Pathfinder mean and sd')
+```
+
+```{r}
+Ef <- exp(apply(subset(draws1b, variable='f'), 3, median))
+birthdays |>
+  mutate(Ef = Ef) |>
+  ggplot(aes(x=date, y=births_relative100)) +
+  geom_point(color=set1[2], alpha=0.2) +
+  geom_line(aes(y=Ef), color=set1[1]) +
+  geom_hline(yintercept=100, color='gray') +
+  labs(x="Date", y="Relative number of births")
+```
+
+```{r}
+model2 <- cmdstan_model(stan_file = "gpbf2.stan")
+```
+
+```{r}
+standata2 <- list(x=birthdays$id,
+                  y=log(birthdays$births_relative100),
+                  N=length(birthdays$id),
+                  c_f1=1.5, # factor c of basis functions for GP for f1
+                  M_f1=20,  # number of basis functions for GP for f1
+                  J_f2=20)  # number of basis functions for periodic f2
+```
+
+```{r}
+tic('Sampling from Pathfinder approximation of model 2 posterior')
+pth2 <- model2$pathfinder(data = standata2, init=0.1,
+                          num_paths=10, single_path_draws=40, draws=400,
+                          history_size=50, max_lbfgs_iters=100,
+                          refresh=0, output_dir="output")
+```
+
+```{r}
+mytoc()
+```
+
+```{r}
+pdraws2 <- pth2$draws()
+summarise_draws(subset(pdraws2, variable=c('lp__')), n_distinct) |>
+  tt()
+```
+
+```{r}
+summarise_draws(subset(pdraws2, variable=c('sigma_','lengthscale_','sigma'), regex=TRUE),
+                default_summary_measures()) |>
+  tt()
+```
+
+```{r}
+draws2 <- as_draws_matrix(pdraws2)
+Ef <- exp(apply(subset(draws2, variable='f'), 2, median))
+Ef1 <- apply(subset(draws2, variable='f1'), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(birthdays$births_relative100)))
+Ef2 <- apply(subset(draws2, variable='f2'), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(birthdays$births_relative100)))
+pf <- birthdays |>
+  mutate(Ef = Ef) |>
+  ggplot(aes(x=date, y=births_relative100)) +
+  geom_point(color=set1[2], alpha=0.2) +
+  geom_line(aes(y=Ef), color=set1[1]) +
+  geom_hline(yintercept=100, color='gray') +
+  labs(x="Date", y="Relative number of births")
+pf1 <- birthdays |>
+  mutate(Ef1 = Ef1) |>
+  ggplot(aes(x=date, y=births_relative100)) +
+  geom_point(color=set1[2], alpha=0.2) +
+  geom_line(aes(y=Ef1), color=set1[1]) +
+  geom_hline(yintercept=100, color='gray') +
+  labs(x="Date", y="Relative number of births")
+pf2 <- birthdays |>
+  mutate(Ef2 = Ef2) |>
+  group_by(day_of_year2) |>
+  summarise(meanbirths=mean(births_relative100), meanEf2=mean(Ef2)) |>
+  ggplot(aes(x=as.Date("1987-12-31")+day_of_year2, y=meanbirths)) +
+  geom_point(color=set1[2], alpha=0.2) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  geom_line(aes(y=meanEf2), color=set1[1]) +
+  geom_hline(yintercept=100, color='gray') +
+  labs(x="Date", y="Relative number of births")
+pf / (pf1 + pf2)
+```
+
+```{r}
+tic('MCMC sampling from model 2 posterior with Pathfinder initialization')
+fit2 <- model2$sample(data=standata2, iter_warmup=100, iter_sampling=100,
+                      chains=4, parallel_chains=4,
+                      init=pth2, output_dir="output")
+```
+
+```{r}
+mytoc()
+```
+
+```{r}
+draws2 <- fit2$draws()
+summarise_draws(subset(draws2, variable=c('sigma_','lengthscale_','sigma'), regex=TRUE)) |>
+  tt()
+```
+
+```{r}
+draws2 <- as_draws_matrix(draws2)
+Ef <- exp(apply(subset(draws2, variable='f'), 2, median))
+Ef1 <- apply(subset(draws2, variable='f1'), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(birthdays$births_relative100)))
+Ef2 <- apply(subset(draws2, variable='f2'), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(birthdays$births_relative100)))
+pf <- birthdays |>
+  mutate(Ef = Ef) |>
+  ggplot(aes(x=date, y=births_relative100)) +
+  geom_point(color=set1[2], alpha=0.2) +
+  geom_line(aes(y=Ef), color=set1[1]) +
+  geom_hline(yintercept=100, color='gray') +
+  labs(x="Date", y="Relative number of births")
+pf1 <- birthdays |>
+  mutate(Ef1 = Ef1) |>
+  ggplot(aes(x=date, y=births_relative100)) +
+  geom_point(color=set1[2], alpha=0.2) +
+  geom_line(aes(y=Ef1), color=set1[1]) +
+  geom_hline(yintercept=100, color='gray') +
+  labs(x="Date", y="Relative number of births")
+pf2 <- birthdays |>
+  mutate(Ef2 = Ef2) |>
+  group_by(day_of_year2) |>
+  summarise(meanbirths=mean(births_relative100), meanEf2=mean(Ef2)) |>
+  ggplot(aes(x=as.Date("1987-12-31")+day_of_year2, y=meanbirths)) +
+  geom_point(color=set1[2], alpha=0.2) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  geom_line(aes(y=meanEf2), color=set1[1]) +
+  geom_hline(yintercept=100, color='gray') +
+  labs(x="Date", y="Relative number of births")
+pf / (pf1 + pf2)
+```
+
+```{r}
+variables <- names(model2$variables()$parameters)
+sp<-summarise_draws(subset(pdraws2, variable=variables))
+sm<-summarise_draws(subset(draws2, variable=variables))
+ggplot(data=NULL, aes(x=sm$mean, xmin=sm$mean-sm$sd, xmax=sm$mean+sm$sd,
+                      y=sp$mean, ymin=sp$mean-sp$sd, ymax=sp$mean+sp$sd,
+                      label=sm$variable)) +
+  geom_point(color=4) +
+  geom_errorbar(width=0,color=4) +
+  geom_errorbarh(height=0,color=4) +
+  geom_text_repel() +
+  geom_abline(linetype='dotted') +
+  labs(x='MCMC mean and sd', y='Pathfinder mean and sd')
+```
+

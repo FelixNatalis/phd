@@ -12,8 +12,8 @@ library(stringr)
 
 
 ```{r}
-#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
-data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
+data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
+#data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
 
 names(data)[names(data)=="...1"] <- "datapoint"
 names<- colnames(data)
@@ -62,13 +62,15 @@ df <- data %>%
     mood        = as.integer(phy_tired),#  mood_irritat, mood_satisfi, mood_enthus, mood_down, mood_lonely, phy_tired
  
     # --- derived time components ---
+    datetime = as.POSIXct(as.character(paste(date_parsed, beeptime)), format="%Y-%m-%d %H:%M:%S"),
+    timestamp = as.numeric(datetime),
     year      = year(date_parsed),
     month_num = month(date_parsed),
     month     = month(date_parsed, label = TRUE, abbr = TRUE),
     week      = isoweek(date_parsed),
     wday_num  = wday(date_parsed, week_start = 1),
     wday      = wday(date_parsed, label = TRUE, abbr = TRUE, week_start = 1)
-  ) %>%
+  )  %>%
   filter(!is.na(date_parsed), mood >= 1, mood <= 6)
  
 ```
@@ -459,18 +461,102 @@ p_ov
 ```
 
 ```{r}
-
-
-```
-
-```{r}
+require("lgpr")
+require("rstan")
+require("ggplot2")
 
 ```
 
 ```{r}
+df_shorter<- df[c("timestamp", "mood_irritat", "mood_satisfi", "mood_enthus", "mood_down", "mood_lonely", "phy_tired")]
+
+
+df_shorter
 
 ```
 
 ```{r}
+set.seed(123)
 
+ggplot() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  labs(x = "Time", y = "Irritation") +
+  theme(legend.position = "none") +
+  theme(aspect.ratio=0.9) +
+geom_smooth(data = df_shorter, aes(x=timestamp, y=mood_satisfi)) +
+  ggtitle("Irritation levels") +
+  theme(plot.title = element_text(size = 13, face = "bold")) 
 ```
+
+
+```{r}
+library(ggplot2)
+library(tidyr)
+
+plot1 <-     ggplot(df_shorter[1:100,], aes(x=timestamp, y=mood_irritat)) + geom_point()
+plot2 <-     ggplot(df_shorter, aes(x=timestamp, y=mood_satisfi)) +geom_point()
+plot3 <-     ggplot(df_shorter, aes(x=timestamp, y=mood_lonely)) +geom_point()
+plot4 <-     ggplot(df_shorter, aes(x=timestamp, y=phy_tired)) +geom_point()
+# Arrange plots in a 2x2 grid
+grid.arrange(plot1, plot2, plot3, plot4, ncol = 2)
+
+df_shorter %>%
+    gather(key,value, mood_satisfi, mood_irritat, mood_enthus, mood_down, mood_lonely, phy_tired) %>%
+    ggplot(aes(value, colour=key)) +
+  geom_density(alpha = 0.1) 
+
+df_shorter %>%
+    gather(key,value, mood_satisfi, mood_irritat, mood_enthus, mood_down, mood_lonely, phy_tired) %>%
+    ggplot(aes(x=timestamp, y=value, colour=key)) +
+    geom_point()
+
+df_shorter %>%
+    gather(key,value, mood_satisfi, mood_irritat, mood_enthus, mood_down, mood_lonely, phy_tired) %>%
+    ggplot(aes(x=timestamp, y=value, colour=key)) +
+    geom_line()
+
+df_shorter %>%
+    gather(key,value, mood_satisfi, mood_irritat, mood_enthus, mood_down, mood_lonely, phy_tired) %>%
+    ggplot(aes(x=timestamp, y=value, colour=key)) +
+    geom_smooth()
+```
+# ---- analysis
+```{r}
+install.packages('GauPro')
+library(GauPro)
+```
+
+```{r}
+df_sh <- df_shorter[1:200,]
+gp <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+plot(gp)
+
+gp2 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+plot(gp2)
+
+gp3 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+plot(gp3)
+
+gp4 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+plot(gp4)
+
+gp5 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+plot(gp5)
+
+gp6 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+plot(gp6)
+
+gp7 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+plot(gp7)
+
+gp8 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+plot(gp8)
+```
+
+```{r}
+summary(gp)
+```
+
+
+
