@@ -90,6 +90,10 @@ daily <- df %>%
     n_beeps   = n(),
     .groups   = "drop"
   )
+
+daily <- daily %>% mutate(
+  timestamp = as.numeric(date_parsed),
+)
  
 # one row per ISO week
 weekly <- df %>%
@@ -529,11 +533,11 @@ library(GauPro)
 
 ```{r}
 
-ggsave("gp12.png", gpp, width = 10, height = 6,
+ggsave("gp14.png", gpp, width = 10, height = 6,
         dpi = 180)
 
 
-df_sh <- df_shorter[1:1200,]
+df_sh <- df_shorter[1:1400,]
 gp <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
 gpp1<-plot(gp)
 
@@ -571,12 +575,146 @@ gp12 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
 gpp<-plot(gp12)
 
 gp13 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
-plot(gp13)
+gpp<-plot(gp13)
+
+gp14 <- gpkm(df_sh$timestamp, df_sh$phy_tired, kernel = k_Periodic(D=1))
+gpp<-plot(gp14)
 ```
 
 ```{r}
 summary(gp)
+
+```
+```{r}
+summary(gp14)
+
+```
+```{r}
+p_overall <- ggplot(daily, aes(timestamp, mood_mean)) +
+  geom_point(aes(color = mood_mean, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+  mood_gradient +
+  scale_y_continuous(limits = c(1, 6), breaks = 1:6) +
+    scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+ # scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "Daily mean · LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood satisfaction (1–6)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+ 
+
+p_overall
 ```
 
 
+```{r}
+daily_sh<- daily[907:1471,]
+p_overall <- ggplot(daily_sh, aes(timestamp, mood_mean)) +
+  geom_point(aes(color = mood_mean, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+  mood_gradient +
+  scale_y_continuous(limits = c(1, 6), breaks = 1:6) +
+    scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+ # scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "Daily mean · LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood satisfaction (1–6)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+ 
+
+p_overall
+```
+
+```{r}
+summary(daily)
+```
+```{r}
+kernel_global<-k_Matern52(beta = 2)
+
+gp_daily_01 <- gpkm(daily_sh$timestamp, daily_sh$mood_mean, kernel = kernel_global)
+plot(gp_daily_01)
+summary(gp_daily_01)
+```
+
+
+```{r}
+kernel_global<-k_Gaussian(beta = 1)
+
+gp_daily_0 <- gpkm(daily_sh$timestamp, daily_sh$mood_mean, kernel = kernel_global)
+gpp_d0<-plot(gp_daily_0)
+gpp_d0
+summary(gp_daily_0)
+#ggsave("gp_daily_1.png", gpp_d1, width = 10, height = 6, dpi = 180)
+```
+
+
+```{r}
+kernel_daily <- k_Periodic(p  = 7)
+kernel_global<-k_Gaussian(beta = 2)
+
+gp_daily_1 <- gpkm(daily_sh$timestamp, daily_sh$mood_mean, kernel = kernel_global + kernel_daily)
+gpp_d1<-plot(gp_daily_1)
+ggsave("gp_daily_1.png", gpp_d1, width = 10, height = 6,
+        dpi = 180)
+summary(gp_daily_1)
+```
+
+```{r}
+kernel_daily <- k_Periodic(p  = 7, alpha = 7)
+
+gp_daily_11 <- gpkm(daily_sh$timestamp, daily_sh$mood_mean, kernel =  kernel_daily)
+plot(gp_daily_11)
+#ggsave("gp_daily_1.png", gpp_d1, width = 10, height = 6, dpi = 180)
+summary(gp_daily_11)
+```
+
+```{r}
+set.seed(12)
+daily_shsh<-daily[1:14,]
+#kernel_daily <- k_Periodic(p  = 1.5)
+
+f1 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 0.001))
+f10 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 0.14))
+f2 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 1))
+f3 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 1.75))
+f4 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 2))
+f5 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 2.5))
+f6 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 3))
+f7 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 3.5))
+f8 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 7))
+f9 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 14))
+#ggsave("gp_daily_1.png", gpp_d1, width = 10, height = 6, dpi = 180)
+#summary(gp_daily_11)
+
+plot(f1) 
+plot(f10) 
+plot(f2) 
+plot(f3) 
+plot(f4) 
+plot(f5) 
+plot(f6) 
+plot(f7) 
+plot(f8) 
+plot(f9)
+
+f9$plotkernel()
+```
 
