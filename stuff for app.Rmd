@@ -736,7 +736,6 @@ legend("topleft", c("ytrain","ytest","mean","confidence"),
        col = c("black","black","darkgreen","gray80"))
 ```
 
-
 ```{r}
 ## ------------------------------------------------------------------
 ## Gaussian process regression modelling under multiple constraints WITHOUT DATA
@@ -773,6 +772,92 @@ legend("topleft", c("ytrain","ytest","mean","confidence"),
        lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
        col = c("black","black","darkgreen","gray80"))
 ```
+
+```{r}
+library(ggplot2)
+nfunc <- 5
+    idx <- 1:nfunc
+    idx <- idx[idx <= 100]   # safety
+    
+    x_new <- model$xtest
+
+ gp_data=   data.frame(
+      x = rep(x_new, length(idx)),
+      f = as.vector(model$ysim),
+      func = rep(idx, each = length(x_new))
+    )
+ggplot(gp_data, aes(x=x, y=f, group=func, color=factor(func))) +
+      geom_line(alpha=0.9, linewidth=1) +
+      scale_color_discrete(guide="none") +
+      labs(title="Gaussian Process Prior Samples",
+           subtitle= paste("kernel_title", "Kernel"),
+           x="x", y="f(x)") +
+      theme_minimal(base_size=16)
+
+#__________________________
+  model <- sim.model
+
+  xtest <- model$xtest
+  ysim <- model$ysim
+  nblines = 5
+
+
+  # precomputing some term
+
+  # drawing the model according to the method
+plot(xtest, ysim[, sample(ncol(ysim),nblines)],
+            type ='l', lty = 3, add = TRUE,
+            col = rainbow(nblines, 0.7))
+
+
+
+```
+
+
+```{r}
+## ------------------------------------------------------------------
+## Gaussian process regression modelling under multiple constraints WITHOUT DATA || WITH FLAT DATA
+## ------------------------------------------------------------------
+library(lineqGPR)
+
+#### generating the synthetic data ####
+sigfun <- function(x) return(1/(1+exp(-7*(x-0.5))))
+x <- c(0.0, 0.1, 0.2, 0.3,0.35, 0.4, 0.45,0.5, 0.6, 0.7, 0.8, 0.9, 1)
+y <- c(0.0, 0.1, 0.2, 0.35, 0.35,0.37, 0.38, 0.39, 0.4, 0.5, 0.6, 0.7, 0.8)
+#DoE <- splitDoE(x, y, DoE.idx = c(201, 501, 801))
+
+#### GP with boundedness and monotonicity constraints ####
+# creating the "lineqGP" model
+model <- create(class = "lineqGP", x = x, y = y,#DoE$ydesign,
+                constrType = c("boundedness"))#,"monotonicity"))
+model$localParam$m <- 50
+model$bounds[1, ] <- c(0,1)
+model$kernParam$type = "gaussian"
+model$kernParam$par<- c( 1, 0.14)
+#model$varnoise <- 2
+                    
+#model$kernParam$type<-"gaussian"
+#model$kernParam$par<-c(1, 1)
+model <- augment(model)
+
+# sampling from the model
+sim.model <- simulate(model, nsim = 5, seed = 1, xtest = seq(0, 1, 0.01))
+plot(sim.model, bounds = model$bounds,
+     xlab = "x", ylab = "y(x)", ylim = range(0, 1),
+     main = "Constrained GP model under boundedness & monotonicity conditions")
+lines(x, y, lty = 2)
+legend("topleft", c("ytrain","ytest","mean","confidence"),
+       lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
+       col = c("black","black","darkgreen","gray80"))
+```
+
+
+
+\
+
+
+
+
 ```{r}
 x1 <- seq(-1, 1, length.out = 5)
 variance_1 = 1
@@ -824,5 +909,859 @@ ggplot(data = d, aes(x=x, y=y, )) +
       labs(title="Gaussian Process Prior Samples",
            x="x", y="f(x)") +
       theme_minimal(base_size=16)
+```
+
+
+
+```{r}
+## ------------------------------------------------------------------
+## Gaussian process regression modelling under linear constraints
+## ------------------------------------------------------------------
+library(lineqGPR)
+library(Matrix)
+
+#### generating the synthetic data ####
+targetFun <- function(x){
+  y <- rep(1, length(x))
+  y[x <= 0.4] <- 2.5*x[x <= 0.4]
+  return(y)
+}
+x <- seq(0, 1, by = 0.001)
+y <- targetFun(x)
+DoE <- splitDoE(x, y, DoE.idx = c(101, 301, 501, 701))
+
+#### GP with predefined linear inequality constraints ####
+# creating the "lineqGP" model
+model <- create(class = "lineqGP", x = DoE$xdesign, y = DoE$ydesign,
+                constrType = c("linear"))
+m <- model$localParam$m <- 100
+
+# building the predefined linear constraints
+bounds1 <- c(0,Inf)
+LambdaB1 <- diag(2*m/5)
+LambdaM <- diag(2*m/5)
+LambdaB2 <- diag(3*m/5)
+lsys <- lineqGPSys(m = 2*m/5, constrType = "monotonicity",
+                   l = bounds1[1], u = bounds1[2], lineqSysType = "oneside")
+LambdaM[-seq(1),] <- lsys$M
+model$Lambda <- as.matrix(bdiag(rbind(LambdaM,LambdaB1),LambdaB2))
+model$lb <- c(-Inf, rep(0, 2*m/5-1), rep(0, 2*m/5), rep(0.85, 3*m/5))
+model$ub <- c(rep(0.1, 2*m/5), rep(1.1, 2*m/5), rep(1.1, 3*m/5))
+model <- augment(model)
+
+# sampling from the model
+sim.model <- simulate(model, nsim = 1e3, seed = 1, xtest = DoE$xtest)
+plot(sim.model, bounds = c(0,1.1),
+     xlab = "x", ylab = "y(x)", ylim = c(0,1.1),
+     main = "Constrained GP model under linear conditions")
+lines(x, y, lty = 2)
+abline(v = 0.4, lty = 2)
+lines(c(0.4, 1), rep(0.85, 2), lty = 2)
+legend("bottomright", c("ytrain","ytest","mean","confidence"),
+       lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
+       col = c("black","black","darkgreen","gray80"))
+
+
+## ------------------------------------------------------------------
+## Note:
+## 1. More examples are given as demos (run: demo(package="lineqGPR")).
+## 2. See also the examples from inner functions of the package
+## (run: help("simulate.lineqGP")).
+## ------------------------------------------------------------------
+```
+
+#________________________________________________________________________ DEBUG
+
+```{r}
+simulate_constrained_gp <- function(x, y,  kernel_label, kernel_params, constraints, constraint_params, n_functions, n_points = 50, data_noise = 1.5){
+  variance <- kernel_params[["kernel_1"]][["variance"]]
+  length_scale <- kernel_params[["kernel_1"]][["length_scale"]]
+  roughness <- kernel_params[["kernel_1"]][["roughness"]]
+  
+  if(kernel_label == "Squared Exponential"){
+    kernel_type <- "gaussian"
+  } else if(kernel_label == "Matérn"){
+    if(roughness == 2.5){
+    kernel_type <- "matern52"
+    } else if(roughness == 1.5){
+      kernel_type <- "matern32"
+    }
+  }
+  
+  model <- create(class = "lineqGP", x = x, y = y, constrType = constraints)
+  model$localParam$m <- n_points
+  model$bounds[1, ] <- c(constraint_params[["lower_bound"]],constraint_params[["upper_bound"]])
+  model$kernParam$type = kernel_type
+  model$kernParam$par<- c(variance, length_scale)
+  model$varnoise <- data_noise
+  model <- augment(model)
+  
+  # sampling from the model
+  sim.model <- simulate(model, nsim = n_functions, seed = 1, xtest = x)
+  
+  return(sim.model$ysim)
+}
+```
+
+```{r}
+    x_orig <- seq(-10, 10, length.out = 100)
+    kernel_params <- hash(
+      "kernel_1" = hash(
+        "variance" = 2
+        ,"length_scale" = 0.14
+        ,"period" = NULL
+        ,"roughness" = NULL
+      ))
+    # TODO draw constrained
+    constraints <- c()
+
+      constraints <-append(constraints, "boundedness")
+  #    constraints <-append(constraints, "monotonicity")
+  #    constraints <-append(constraints, "convexity")
+
+    
+    constraint_params <- hash(
+      "lower_bound" = 0,
+      "upper_bound" =10
+    ) 
+    funcs<- simulate_constrained_gp(x_orig, rep(0, length(x_orig)), "Squared Exponential", kernel_params, constraints, constraint_params, 5)
+    cat(paste("\n\n","funcs in pool", funcs, "\n\n"))
+```
+
+```{r}
+##### working 
+## ------------------------------------------------------------------
+## Gaussian process regression modelling under multiple constraints WITHOUT DATA
+## ------------------------------------------------------------------
+library(lineqGPR)
+
+#### generating the synthetic data ####
+x <- seq(0, 1, 0.1)
+y <- x
+
+model <- create(class = "lineqGP", x = x, y = y,#DoE$ydesign,
+                constrType = c("boundedness"))#,"monotonicity"))
+model$localParam$m <- 50
+model$bounds[1, ] <- c(0,1)
+model$kernParam$type = "gaussian"
+model$kernParam$par<- c( 2, 0.14)
+model$varnoise <- 1.5
+                    
+#model$kernParam$type<-"gaussian"
+#model$kernParam$par<-c(1, 1)
+model <- augment(model)
+
+# sampling from the model
+sim.model <- simulate(model, nsim = 5, seed = 1, xtest = x)
+plot(sim.model, bounds = model$bounds,
+     xlab = "x", ylab = "y(x)", ylim = range(0, 1),
+     main = "Constrained GP model under boundedness & monotonicity conditions")
+lines(x, y, lty = 2)
+legend("topleft", c("ytrain","ytest","mean","confidence"),
+       lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
+       col = c("black","black","darkgreen","gray80"))
+```
+
+
+```{r}
+    idx <- 1:5
+    idx <- idx[idx <= 100] 
+    data <- data.frame(
+      x = rep(x, length(idx)),
+      f = as.vector(sim.model$ysim),
+      func = rep(idx, each = length(x))
+    )    
+
+      ggplot(data, aes(x=x, y=f, group=func, color=factor(func))) +
+        geom_line(alpha=0.9, linewidth=1) +
+        scale_color_discrete(guide="none") +
+        labs(title="Gaussian Process Prior Samples",
+             subtitle= paste("kernel_title", "Kernel"),
+             x="x", y="f(x)") +
+        theme_minimal(base_size=16)
+```
+
+##---------------------------------------WORKING
+
+```{r}
+simulate_constrained_gp <- function(x_train, y_train, kernel_label, kernel_params, constraints,  constraint_params, n_functions,x_draw,n_points = 50,data_noise = 1.5) {
+  k_1 <- kernel_params[["kernel_1"]]$kernel_1
+  variance <- k_1[["variance"]]
+  length_scale <- k_1[["length_scale"]]
+  roughness <- k_1[["roughness"]]
+  
+  if (kernel_label == "Squared Exponential") {
+    kernel_type <- "gaussian"
+  } else if (kernel_label == "Matérn") {
+    if (roughness == 2.5) {
+      kernel_type <- "matern52"
+    } else if (roughness == 1.5) {
+      kernel_type <- "matern32"
+    }
+  }
+  
+  model <- create(
+    class = "lineqGP",
+    x = x_train,
+    y = y_train,
+    constrType = constraints
+  )
+  model$localParam$m <- n_points
+  if ("boundedness" %in% constraints) {
+    model$bounds[1, ] <- c(constraint_params[["lower_bound"]], constraint_params[["upper_bound"]])
+  }
+  
+  model$kernParam$type = kernel_type
+  model$kernParam$par <- c(variance, length_scale)
+  model$varnoise <- data_noise
+  model <- augment(model)
+  
+  # sampling from the model
+  sim.model <- simulate(model,
+                        nsim = n_functions,
+                        seed = 1,
+                        xtest = x_draw)
+  
+  return(sim.model)
+}
+```
+
+```{r}
+library(hash)
+library(lineqGPR)
+library(ggplot2)
+kernel_label = "Squared Exponential"
+
+
+      x<- c()
+      y<- c()
+   #   if(!invalid(input$x_1) && !invalid(input$y_1)){
+        x <- append(x, 0.1)
+        y <- append(y, 0.2)
+  #    }
+  #    if(!invalid(input$x_2) && !invalid(input$y_2)){
+        x <- append(x, 0.4)
+        y <- append(y, 0.7)
+   #   }
+   #   if(!invalid(input$x_3) && !invalid(input$y_3)){
+        x <- append(x, 0.9)
+        y <- append(y, 0.9)
+   #   }
+    #  if(length(x) > 0){
+        x_train <- x
+        y_train <- y
+        x_draw <- seq(0, 1, 0.1)
+        data_noise <- 1e-5
+      # }else{
+      #   x_train <- seq(0, 1, 0.1)
+      #   y_train <- x_train
+      #   x_draw <- x_train
+      #   data_noise <- 1.5
+      # }
+      
+    kernel_params <- hash(
+      "kernel_1" = hash(
+        "variance" = 2
+        ,"length_scale" = 0.3
+        ,"period" = NULL
+        ,"roughness" = NULL
+      ))
+    
+      constraints <- c()
+        constraints <- append(constraints, "boundedness")
+        #constraints <- append(constraints, "monotonicity")
+        #constraints <- append(constraints, "convexity")
+      
+      constraint_params <- hash(
+        "lower_bound" = 0,
+        "upper_bound" = 1
+        #, "monotonicity_type" = input$monotonicity # TODO is there a monotonically decreasing option?
+      )
+    
+      funcs <- simulate_constrained_gp(
+        x_train = x_train,
+        y_train = y_train,
+        kernel_label = kernel_label,
+        kernel_params = kernel_params,
+        constraints = constraints,
+        constraint_params = constraint_params,
+        n_functions = 5,
+        x_draw = x_draw,
+        data_noise = data_noise
+      )
+ 
+
+```
+```{r}
+    idx <- 1:5
+    idx <- idx[idx <= 100]   # safety
+    
+    data <- data.frame(
+      x = rep(x_draw, length(idx)),
+      f = as.vector(funcs$ysim),
+      func = rep(idx, each = length(x_draw))
+    )    
+    
+    cat(paste("\n\n","data", data, "\n\n"))
+    data
+```
+
+```{r}
+fixed<- data.frame(x_train, y_train)
+qtls <- apply(funcs$ysim, 1, quantile, probs =  c(0.05, 0.95))
+  
+      p_1<-ggplot(data, aes(x=x, y=f, group=func, color=factor(func))) +
+        geom_line(alpha=0.9, linewidth=1) +
+        scale_color_discrete(guide="none") +
+        labs(title="Gaussian Process Prior Samples",
+             subtitle= paste("kernel_title", "Kernel"),
+             x="x", y="f(x)") +
+        theme_minimal(base_size=16) + annotate(
+          "point",
+          x = x_train,
+          y = y_train,
+          colour = "black",
+          size = 2
+        )
+      
+      
+      
+      
+      p_1+geom_ribbon(aes(ymin=long_lower, ymax=long_upper,
+                  group=func), linetype=2, alpha=0.1)
+      
+     lower<- qtls[1,]
+     upper<- qtls[2,]
+     nfuncs<-5
+     long_lower<-c()
+     long_upper<-c()
+     for(i in seq(1, length(lower), 1)){
+       long_lower<-append(long_lower, rep(lower[i], nfuncs))
+       long_upper<-append(long_upper, rep(upper[i], nfuncs))
+     }
+    
+      data$f
+      funcs$ysim
+      
+```
+```{r}
+plot(funcs, bounds = model$bounds,
+     xlab = "x", ylab = "y(x)", ylim = range(0, 1),
+     main = "Constrained GP model under boundedness & monotonicity conditions")
+lines(x, y, lty = 2)
+legend("topleft", c("ytrain","ytest","mean","confidence"),
+       lty = c(NaN,2,1,NaN), pch = c(20,NaN,NaN,15),
+       col = c("black","black","darkgreen","gray80"))
+
+  plot(c(seq(0, 1, 0.1), rev(seq(0, 1, 0.1))), c(qtls[2, ], rev(qtls[1, ])),
+       col = "gray90", type = "l", lty = 1)
+  polygon(c(seq(0, 1, 0.1), rev(seq(0, 1, 0.1))), c(qtls[2, ], rev(qtls[1, ])),
+          col = "gray90", border = NA)
+```
+
+
+```{r}
+
+
+lines<- geom_line(
+    data = data,
+    aes(x = x, y = f, group = func, color = factor(func)),
+    alpha     = 0.9,
+    linewidth = 1
+  )
+
+ribbon_data<- NULL
+CI <- NULL
+fixed_points <- NULL
+
+if(0){
+
+# Build the ribbon data frame separately (11 rows only)
+ribbon_data <- data.frame(
+  x    = x_draw,
+  ymin = qtls[1, ],
+  ymax = qtls[2, ]
+)
+
+CI<-geom_ribbon(
+    data = ribbon_data,
+    aes(x = x, ymin = ymin, ymax = ymax),
+    fill  = "gray80",
+    alpha = 0.6,
+    inherit.aes = FALSE
+  )
+
+fixed_points<-geom_point(
+    data = data.frame(x = x_train, y = y_train),
+    aes(x = x, y = y),
+    color = "black", size = 2
+  )
+}
+
+ggplot() +
+  NULL+
+  # Ribbon first so lines are drawn on top
+  CI +
+  # The 5 sampled function lines
+  lines +
+  # Training points
+  fixed_points +
+  ylim(0, 1) +
+  labs(
+    x     = "x",
+    y     = "y(x)",
+    title = "Constrained GP model under boundedness & monotonicity conditions",
+    color = "Function"
+  ) +
+  # Manual legend entries for ribbon + dashed line + points
+  scale_color_discrete() +
+  guides(color = "none") +          # drop per-function color legend if not needed
+  annotate("rect",                  # proxy for the ribbon in the legend
+    xmin = -Inf, xmax = -Inf,
+    ymin = -Inf, ymax = -Inf,
+    fill = "gray80"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+
+
+```{r}
+# Source - https://stackoverflow.com/a/29747072
+# Posted by Ruthger Righart
+# Retrieved 2026-03-15, License - CC BY-SA 3.0
+
+p<-ggplot(data=data, aes(x=interval, y=OR, colour=Drug)) + geom_point() + geom_line()
+p<-p+geom_ribbon(aes(ymin=data$lower, ymax=data$upper), linetype=2, alpha=0.1)
+
+```
+
+```{r}
+library(ggplot2)
+# Source - https://stackoverflow.com/q/67810248
+# Posted by logjammin, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-03-16, License - CC BY-SA 4.0
+
+df <- data.frame(weight = c(156.8, 170,  185,   199.0, 203,  208), 
+                lower95 = c(151.2, 165,  181.6, 194.5, 202,  206.4), 
+                upper95 = c(162.8, 175,  187.9, 203.7, 204,  211.9),
+                year =    c(2010,  2014, 2017,  2019,  2020, 2021)) 
+# Source - https://stackoverflow.com/a/67810341
+# Posted by Gregor Thomas
+# Retrieved 2026-03-16, License - CC BY-SA 4.0
+
+ggplot(data = df, aes(x = year, y = weight)) +
+  geom_ribbon(aes(ymin = lower95, ymax = upper95)) +
+  geom_line()
+
+```
+
+
+```{r}
+# what x range
+x <- seq(0, 2, 0.2)
+m <- 5# support points number?
+u <- seq(0, 1, 1/(m-1)) # locations of support points?
+d  = 1 #dimensions
+#Phi <- basisCompute.lineqGP(x, u, d = 1) d 
+#matplot(Phi, type = "l", lty = 2, main = "Hat basis functions with m = 5")
+
+
+  if (!is.matrix(x) || ncol(x) != d)
+    x <- matrix(x, ncol = d)
+  if (is.list(u) && length(u) == d) {
+    m <- as.integer(lapply(u, length))
+  } else if (is.double(u)) {
+    u <- matrix(u, ncol = d)
+    m <- nrow(u)
+  } else {
+    m <- nrow(u)
+  }
+  
+  # precomputing some terms
+  n <- nrow(x)
+  # delta <- diff(u)
+  
+  # computing the hat basis functions
+  if (d == 1){
+    Phi <- matrix(0, n, m)
+    for (i in 1:length(x)) {
+      for (j in 1:length(u)) {
+        if (x[i] > u[j] + 1e-12) { # there is a numerical stability issue
+          distAbs <- abs((x[i] - u[j])/(u[j+1] - u[j]))
+        } else if (x[i] < u[j]) {
+          distAbs <- abs((x[i] - u[j])/(u[j] - u[j-1]))
+        } else {
+          distAbs <- 0
+        }
+        if (distAbs <= 1)
+          Phi[i, j] <- 1 - distAbs
+      }
+    }
+  } 
+```
+#------------------------------------Changepoint issues
+
+```{r}
+epsilon = 1e-6
+simulate_gp <- function(x,
+                        is_combination,
+                        kernel_label,
+                        kernel_params,
+                        sigma_noise = 1e-3,
+                        mean_fun = function(x)
+                          0) {
+  K <- kernel_wrapper(is_combination, kernel_label, x, x, params = kernel_params)
+  print("\nkernel")
+  print(K)
+  L <- chol(K + epsilon * diag(length(x)))
+  print("\ninverse")  
+  print(L)
+  m <- mean_fun(x)
+  f <- m + t(L) %*% rnorm(length(x))
+  
+  # noise
+  eps <- sigma_noise * rnorm(length(x))
+
+  drop(f + eps)
+  
+}
+
+
+kernel_wrapper <- function(is_combination,
+                           kernel_label,
+                           x1,
+                           x2,
+                           params) {
+  if (is_combination) {
+    extra_params <- params[["extra"]]
+    operation <- extra_params[["operation"]]
+    additional_params <- extra_params[["additional"]]
+    return(
+      combine_kernels(
+        kernel_label[1],
+        kernel_label[2],
+        params[["kernel_1"]],
+        params[["kernel_2"]],
+        operation,
+        x1,
+        x2,
+        additional_params
+      )
+    )
+  } else{
+    return(simple_kernel_wrapper(kernel_label, x1, x2, params[["kernel_1"]]))
+  }
+}
+
+simple_kernel_wrapper <- function(kernel_label, x1, x2, params) {
+  variance = params[["variance"]]
+  length_scale = params[["length_scale"]]
+  roughness = params[["roughness"]]
+  period = params[["period"]]
+  
+  if (kernel_label == "Linear") {
+    if (!invalid(x1) & !invalid(x2) & !invalid(variance)) {
+      return(linear_kernel(
+        x1 = x1,
+        x2 = x2,
+        variance = variance
+      ))
+    }
+  }
+  
+  if (kernel_label == "Squared Exponential") {
+    if (!invalid(x1) &
+        !invalid(x2) &
+        !invalid(variance) & !invalid(length_scale)) {
+      return(
+        squared_exponential_kernel(
+          x1 = x1,
+          x2 = x2,
+          variance = variance,
+          length_scale = length_scale
+        )
+      )
+    }
+  }
+  
+  if (kernel_label == "Matérn") {
+    if (!invalid(x1) &
+        !invalid(x2) &
+        !invalid(variance) &
+        !invalid(length_scale) & !invalid(roughness)) {
+      return(
+        matern_kernel(
+          x1 = x1,
+          x2 = x2,
+          variance = variance,
+          length_scale = length_scale,
+          roughness = roughness
+        )
+      )
+    }
+  }
+  
+  if (kernel_label == "Periodic") {
+    if (!invalid(x1) &
+        !invalid(x2) &
+        !invalid(variance) &
+        !invalid(length_scale) & !invalid(period)) {
+      return(
+        periodic_kernel(
+          x1 = x1,
+          x2 = x2,
+          variance = variance,
+          length_scale = length_scale,
+          period = period
+        )
+      )
+    }
+  }
+}
+
+# SE kernel function
+squared_exponential_kernel <- function(x1, x2, variance, length_scale) {
+  outer(x1, x2, function(a, b)
+    (variance^2 * exp(-(a - b)^2 / (2 * length_scale^2))))
+}
+
+# Linear kernel function
+linear_kernel <- function(x1, x2, variance) {
+  outer(x1, x2, function(a, b)
+    (variance^2 * a * b))
+}
+
+# Matérn kernel function
+matern_kernel <- function(x1, x2, variance, length_scale, roughness) {
+  distance <- outer(x1, x2, function(a, b)
+    abs(a - b))
+  term <- sqrt(2 * roughness) * distance / length_scale
+  K <- variance^2 * (2^(1 - roughness) / gamma(roughness)) * (term^roughness) * besselK(term, roughness)
+  K[distance == 0] <- variance^2   # Handle the distance = 0 case explicitly
+  K
+}
+
+# Periodic kernel function
+periodic_kernel <- function(x1, x2, variance, length_scale, period) {
+  outer(x1, x2, function(a, b)
+    (variance^2 * exp(
+      -2 * sin(pi * abs(a - b) / period)^2 / length_scale^2
+    )))
+}
+
+kernel_labels <- c("Squared Exponential", "Matérn", "Linear", "Periodic")
+
+kernel_operation_labels <- c("add", "multiply", "changepoint")
+
+psi <- function(x, steepness, location) {
+  return(1 / (1 + exp(-steepness * (x - location))))
+}
+
+combine_kernels <- function(label_1,
+                            label_2,
+                            params_1,
+                            params_2,
+                            operation,
+                            x1,
+                            x2,
+                            additional_params) {
+  k_1 <- simple_kernel_wrapper(label_1, x1, x2, params = params_1)
+  k_2 <- simple_kernel_wrapper(label_2, x1, x2, params = params_2)
+  if (operation == "add") {
+    return(k_1 + k_2)
+  } else if (operation == "multiply") {
+    return(k_1 * k_2)
+  }
+  else if (operation == "changepoint") {
+    steepness <- additional_params[["steepness"]]
+    location <- additional_params[["location"]]
+    return(
+      k_1 * psi(x1, steepness, location) * psi(x2, steepness, location)
+      + k_2 * (1 - psi(x1, steepness, location)) * (1 - psi(x2, steepness, location))
+    )
+  }
+}
+```
+
+```{r}
+n_functions = 5
+x_orig <- seq(-30, 30, length.out = 200) # -10 10 10 ok # 20 bad # 15 ok # 19 ok
+kernel_label <- c("Squared Exponential", "Squared Exponential")
+        kernel_params <- hash(
+          "kernel_1" = hash(
+            "variance" = 3
+            ,
+            "length_scale" = 0.2
+            ,
+            "period" = 0
+            ,
+            "roughness" = 0
+          ),
+          "kernel_2" = hash(
+            "variance" = 1
+            ,
+            "length_scale" = 2
+            ,
+            "period" = 0
+            ,
+            "roughness" = 0
+          ),
+          "extra" = hash(
+            "operation" = "changepoint",
+            "additional" = hash(
+              "location" = 0,
+              "steepness" = 5
+            )
+          )
+        )
+        
+funcs <- replicate(
+          n_functions,
+          simulate_gp(
+            x_orig,
+            TRUE,
+            kernel_label,
+            kernel_params
+          )
+        )
+
+#----
+# sim<- simulate_gp(
+#             x_orig,
+#             TRUE,
+#             kernel_label,
+#             kernel_params
+#           )
+#----
+
+
+x_new <- x_orig# seq(-10, 10, length.out = 7)
+idx <- 1:n_functions
+idx <- idx[idx <= 100]
+funcs_interp <- apply(funcs[, idx, drop = FALSE], 2, function(f) {
+        approx(x_orig, f, xout = x_new)$y
+  })
+
+    data <- data.frame(
+      x = rep(x_new, length(idx)),
+      f = as.vector(funcs_interp),
+      func = rep(idx, each = length(x_new))
+    )
+```
+
+```{r}
+
+        lines <- geom_line(
+          data = data,
+          aes(
+            x = x,
+            y = f,
+            group = func,
+            color = factor(func)
+          ),
+          alpha     = 0.9,
+          linewidth = 1
+        )
+        
+        ggplot() +
+          lines +
+          labs(
+            x     = "x",
+            y     = "f(x)",
+            title = "Gaussian Process Prior Samples",
+            subtitle = paste(kernel_label, "Kernel"),
+            color = "Function"
+          ) +
+          # Manual legend entries for ribbon + dashed line + points
+          scale_color_discrete() +
+          guides(color = "none") +          # drop per-function color legend if not needed
+          annotate(
+            "rect",
+            # proxy for the ribbon in the legend
+            xmin = -Inf,
+            xmax = -Inf,
+            ymin = -Inf,
+            ymax = -Inf,
+            fill = "gray80"
+          ) +
+          theme_minimal(base_size = 16)
+```
+
+#-----------------------------------fix?
+
+```{r}
+# adaptive jitter
+simulate_gp <- function(x, is_combination, kernel_label, kernel_params,
+                        sigma_noise = 1e-3, mean_fun = function(x) 0) {
+  K <- kernel_wrapper(is_combination, kernel_label, x, x, params = kernel_params)
+  
+  # Adaptive jitter: start small, increase if chol fails
+  jitter <- 1e-6
+  L <- NULL
+  for (attempt in 1:5) {
+    L <- tryCatch(
+      chol(K + jitter * diag(length(x))),
+      error = function(e) NULL
+    )
+    if (!is.null(L)) break
+    jitter <- jitter * 10
+    message(sprintf("Cholesky failed, retrying with jitter = %.2e", jitter))
+  }
+  if (is.null(L)) stop("Matrix not PSD even after jitter increase. Check kernel.")
+  message(sprintf("Success, jitter = %.2e", jitter))
+  m <- mean_fun(x)
+  f <- m + t(L) %*% rnorm(length(x))
+  eps <- sigma_noise * rnorm(length(x))
+  drop(f + eps)
+}
+```
+
+```{r}
+make_psd <- function(K, jitter = 1e-6) {
+  K <- (K + t(K)) / 2          # force exact symmetry
+  eig <- eigen(K, symmetric = TRUE)
+  
+  # If any eigenvalue is negative, the matrix isn't PSD
+  min_eig <- min(eig$values)
+  if (min_eig < 0) {
+    message(sprintf("Kernel has negative eigenvalue: %.4e — repairing", min_eig))
+    # Clip negative eigenvalues to zero, add jitter
+    eig$values <- pmax(eig$values, 0) + jitter
+    K <- eig$vectors %*% diag(eig$values) %*% t(eig$vectors)
+  } else {
+    K <- K + jitter * diag(nrow(K))
+  }
+  K
+}
+```
+
+
+```{r}
+# supporting matrix function
+simulate_gp <- function(x,
+                        is_combination,
+                        kernel_label,
+                        kernel_params,
+                        sigma_noise = 1e-3,
+                        mean_fun = function(x)
+                          0) {
+  K <- kernel_wrapper(is_combination, kernel_label, x, x, params = kernel_params)
+
+K <- make_psd(K)           # <-- add this
+L <- chol(K)
+
+  m <- mean_fun(x)
+  f <- m + t(L) %*% rnorm(length(x))
+  
+  # noise
+  eps <- sigma_noise * rnorm(length(x))
+
+  drop(f + eps)
+  
+}
 ```
 
