@@ -8,12 +8,33 @@ date: "2026-03-23"
 library(tidyverse)
 library(dplyr)
 library(stringr)
+library(ggplot2)
+library(reshape2)
+library(tidyr)
+
+require("lgpr")
+require("rstan")
+require("ggplot2")
+
+#install.packages('GauPro')
+library(GauPro)
+required <- c("tidyverse", "lubridate", "scales", "patchwork", "viridis")
+new      <- required[!required %in% installed.packages()[, "Package"]]
+if (length(new)) install.packages(new, repos = "https://cloud.r-project.org")
+ 
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(lubridate)
+  library(scales)
+  library(patchwork)
+  library(viridis)
+})
 ```
 
 
 ```{r}
-data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
-#data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
+#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
+data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
 
 names(data)[names(data)=="...1"] <- "datapoint"
 names<- colnames(data)
@@ -24,8 +45,6 @@ mood_data<-data[c("datapoint", "mood_satisfi")]
 
 ```{r}
 
-library(ggplot2)
-library(reshape2)
 
 set.seed(123)
 
@@ -39,17 +58,7 @@ ggplot(mdf, aes( x=datapoint, y=value, colour=variable, group=variable )) +
 ```
 
 ```{r}
-required <- c("tidyverse", "lubridate", "scales", "patchwork", "viridis")
-new      <- required[!required %in% installed.packages()[, "Package"]]
-if (length(new)) install.packages(new, repos = "https://cloud.r-project.org")
- 
-suppressPackageStartupMessages({
-  library(tidyverse)
-  library(lubridate)
-  library(scales)
-  library(patchwork)
-  library(viridis)
-})
+
  
 ```
 
@@ -59,19 +68,21 @@ df <- data %>%
     # --- temporal parsing ---
     date_parsed = dmy(date),
     hour        = hour(hms(beeptime)),
-    mood        = as.integer(phy_tired),#  mood_irritat, mood_satisfi, mood_enthus, mood_down, mood_lonely, phy_tired
+    tired        = as.integer(phy_tired),#  
+    irritated = as.integer(mood_irritat), #mood_satisfi, mood_enthus, mood_down, mood_lonely, 
  
     # --- derived time components ---
     datetime = as.POSIXct(as.character(paste(date_parsed, beeptime)), format="%Y-%m-%d %H:%M:%S"),
     timestamp = as.numeric(datetime),
     year      = year(date_parsed),
     month_num = month(date_parsed),
+    date_num = day(date_parsed),
     month     = month(date_parsed, label = TRUE, abbr = TRUE),
     week      = isoweek(date_parsed),
     wday_num  = wday(date_parsed, week_start = 1),
     wday      = wday(date_parsed, label = TRUE, abbr = TRUE, week_start = 1)
   )  %>%
-  filter(!is.na(date_parsed), mood >= 1, mood <= 6)
+  filter(!is.na(date_parsed), tired >= 1, tired <= 7, irritated >= 1, irritated <= 7)
  
 ```
 
@@ -85,8 +96,10 @@ max(df$date_parsed) #"2012-08-13" "2013-04-08"
 daily <- df %>%
   group_by(date_parsed, year, month, month_num, week, wday, wday_num) %>%
   summarise(
-    mood_mean = mean(mood),
-    mood_sd   = sd(mood),
+    tired_mean = mean(tired),
+    tired_sd   = sd(tired),
+    irr_mean = mean(irritated),
+    irr_sd = sd(irritated),
     n_beeps   = n(),
     .groups   = "drop"
   )
@@ -99,7 +112,9 @@ daily <- daily %>% mutate(
 weekly <- df %>%
   group_by(year, week) %>%
   summarise(
-    mood_mean  = mean(mood),
+    tired_mean  = mean(tired),
+    irr_mean = mean(irritated),
+    irr_sd = sd(irritated),
     n          = n(),
     week_start = min(date_parsed),
     .groups    = "drop"
@@ -109,8 +124,10 @@ weekly <- df %>%
 monthly <- df %>%
   group_by(year, month_num, month) %>%
   summarise(
-    mood_mean = mean(mood),
-    mood_se   = sd(mood) / sqrt(n()),
+    tired_mean = mean(tired),
+    tired_se   = sd(tired) / sqrt(n()),
+    irr_mean = mean(irritated),
+    irr_se = sd(irritated) / sqrt(n()),
     n         = n(),
     .groups   = "drop"
   ) %>%
@@ -120,8 +137,10 @@ monthly <- df %>%
 hourly <- df %>%
   group_by(hour) %>%
   summarise(
-    mood_mean = mean(mood),
-    mood_se   = sd(mood) / sqrt(n()),
+    tired_mean = mean(tired),
+    tired_se   = sd(tired) / sqrt(n()),
+    irr_mean = mean(irritated),
+    irr_se = sd(irritated) / sqrt(n()),
     n         = n(),
     .groups   = "drop"
   )
@@ -130,12 +149,26 @@ hourly <- df %>%
 wday_agg <- df %>%
   group_by(wday, wday_num) %>%
   summarise(
-    mood_mean = mean(mood),
-    mood_se   = sd(mood) / sqrt(n()),
+    tired_mean = mean(tired),
+    tired_se   = sd(tired) / sqrt(n()),
+    irr_mean = mean(irritated),
+    irr_se = sd(irritated) / sqrt(n()),
     n         = n(),
     .groups   = "drop"
   ) %>%
   arrange(wday_num)
+
+mday_agg <- df %>%
+  group_by(date_num) %>%
+  summarise(
+    tired_mean = mean(tired),
+    tired_se   = sd(tired) / sqrt(n()),
+    irr_mean = mean(irritated),
+    irr_se = sd(irritated) / sqrt(n()),
+    n         = n(),
+    .groups   = "drop"
+  ) %>%
+  arrange(date_num)
  
 ```
 
@@ -183,15 +216,17 @@ theme_mood <- function(base_size = 12) {
 }
 theme_set(theme_mood())
  
-grand_mean <- mean(df$mood, na.rm = TRUE)
+
  
 ```
 
 ```{r}
+
+grand_mean <- mean(df$tired, na.rm = TRUE)
 # important: overall
 ## 4a. Overall trajectory — raw daily means + LOESS ───────────────────────────
-p_overall <- ggplot(daily, aes(date_parsed, mood_mean)) +
-  geom_point(aes(color = mood_mean, size = n_beeps)) +
+p_overall <- ggplot(daily, aes(date_parsed, tired_mean)) +
+  geom_point(aes(color = tired_mean, size = n_beeps)) +
   geom_smooth(
     method = "loess", span = .1, se = TRUE,
     color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
@@ -214,13 +249,13 @@ p_overall <- ggplot(daily, aes(date_parsed, mood_mean)) +
 
 
  ## 4c. Monthly line + SE ribbon ───────────────────────────────────────────────
-p_monthly <- ggplot(monthly, aes(date_label, mood_mean)) +
+p_monthly <- ggplot(monthly, aes(date_label, tired_mean)) +
   geom_ribbon(
-    aes(ymin = mood_mean - mood_se, ymax = mood_mean + mood_se),
+    aes(ymin = tired_mean - tired_se, ymax = tired_mean + tired_se),
     fill = clr_line, alpha = .2
   ) +
   geom_line(color = clr_line, linewidth = .9) +
-  geom_point(aes(size = n, color = mood_mean)) +
+  geom_point(aes(size = n, color = tired_mean)) +
   mood_gradient +
   geom_hline(
     yintercept = grand_mean,
@@ -239,17 +274,17 @@ p_monthly <- ggplot(monthly, aes(date_label, mood_mean)) +
 
 # important: weekly
 ## 4e. Day-of-week bar chart ───────────────────────────────────────────────────
-p_wday <- ggplot(wday_agg, aes(wday_num, mood_mean)) +
+p_wday <- ggplot(wday_agg, aes(wday_num, tired_mean)) +
     geom_ribbon(
-    aes(ymin = mood_mean - mood_se, ymax = mood_mean + mood_se),
+    aes(ymin = tired_mean - tired_se, ymax = tired_mean + tired_se),
     fill = clr_line, alpha = .2
   ) +
   geom_line(color = clr_line, linewidth = .9)+
   # geom_errorbar(
-  #   aes(ymin = mood_mean - mood_se, ymax = mood_mean + mood_se),
+  #   aes(ymin = tired_mean - tired_se, ymax = tired_mean + tired_se),
   #   width = .2, color = clr_text, linewidth = .5
   # )+
-    geom_point(aes(color = mood_mean, size = n)) +
+    geom_point(aes(color = tired_mean, size = n)) +
   mood_gradient +
   geom_hline(
     yintercept = grand_mean,
@@ -268,16 +303,44 @@ p_wday <- ggplot(wday_agg, aes(wday_num, mood_mean)) +
   )
  
 
+p_mday <- ggplot(mday_agg, aes(date_num, tired_mean)) +
+    geom_ribbon(
+    aes(ymin = tired_mean - tired_se, ymax = tired_mean + tired_se),
+    fill = clr_line, alpha = .2
+  ) +
+  geom_line(color = clr_line, linewidth = .9)+
+  # geom_errorbar(
+  #   aes(ymin = tired_mean - tired_se, ymax = tired_mean + tired_se),
+  #   width = .2, color = clr_text, linewidth = .5
+  # )+
+    geom_point(aes(color = tired_mean, size = n)) +
+  mood_gradient +
+  geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+    scale_size_continuous(range = c(1.5, 5), name = "N") +
+  scale_x_continuous(
+    breaks = seq(1, 31, 1),
+    labels = paste0(c(seq(1, 31, 1)))
+  ) +
+  scale_y_continuous(limits = c(0, 6), breaks = 1:6) +
+  labs(
+    title    = "Mood by Day of Month",
+    subtitle = "Mean ± 1 SE · dashed = grand mean",
+    x = NULL, y = "Mean mood"
+  )
+
  
  # important: hourly
 ## 4f. Hour-of-day profile ────────────────────────────────────────────────────
-p_hour <- ggplot(hourly, aes(hour, mood_mean)) +
+p_hour <- ggplot(hourly, aes(hour, tired_mean)) +
   geom_ribbon(
-    aes(ymin = mood_mean - mood_se, ymax = mood_mean + mood_se),
+    aes(ymin = tired_mean - tired_se, ymax = tired_mean + tired_se),
     fill = clr_line, alpha = .2
   ) +
   geom_line(color = clr_line, linewidth = .9) +
-  geom_point(aes(color = mood_mean, size = n)) +
+  geom_point(aes(color = tired_mean, size = n)) +
   mood_gradient +
     geom_hline(
     yintercept = grand_mean,
@@ -299,15 +362,160 @@ p_overall
 p_monthly
  p_wday
 p_hour
-
+p_mday
 
 ```
 
 ```{r}
+grand_mean <- mean(df$irritated, na.rm = TRUE)
+# important: overall
+## 4a. Overall trajectory — raw daily means + LOESS ───────────────────────────
+p_overall <- ggplot(daily, aes(date_parsed, irr_mean)) +
+  geom_point(aes(color = irr_mean, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+  mood_gradient +
+  scale_y_continuous(limits = c(1, 6), breaks = 1:6) +
+    scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "Daily mean · LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood satisfaction (1–6)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+ 
+
+
+ ## 4c. Monthly line + SE ribbon ───────────────────────────────────────────────
+p_monthly <- ggplot(monthly, aes(date_label, irr_mean)) +
+  geom_ribbon(
+    aes(ymin = irr_mean - irr_se, ymax = irr_mean + irr_se),
+    fill = clr_line, alpha = .2
+  ) +
+  geom_line(color = clr_line, linewidth = .9) +
+  geom_point(aes(size = n, color = irr_mean)) +
+  mood_gradient +
+  geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+  scale_size_continuous(range = c(1.5, 5), name = "N beeps") +
+  scale_y_continuous(limits = c(1, 6), breaks = 1:6) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b\n%Y") +
+  labs(
+    title    = "Monthly Mood Averages",
+    subtitle = "Line ± 1 SE ribbon · point size = number of beeps",
+    x = NULL, y = "Mean mood"
+  ) +
+  theme(legend.position = "right")
+ 
+
+# important: weekly
+## 4e. Day-of-week bar chart ───────────────────────────────────────────────────
+p_wday <- ggplot(wday_agg, aes(wday_num, irr_mean)) +
+    geom_ribbon(
+    aes(ymin = irr_mean - irr_se, ymax = irr_mean + irr_se),
+    fill = clr_line, alpha = .2
+  ) +
+  geom_line(color = clr_line, linewidth = .9)+
+  # geom_errorbar(
+  #   aes(ymin = irr_mean - irr_se, ymax = irr_mean + irr_se),
+  #   width = .2, color = clr_text, linewidth = .5
+  # )+
+    geom_point(aes(color = irr_mean, size = n)) +
+  mood_gradient +
+  geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+    scale_size_continuous(range = c(1.5, 5), name = "N") +
+  scale_x_continuous(
+    breaks = seq(1, 7, 1),
+    labels = paste0(c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"))
+  ) +
+  scale_y_continuous(limits = c(0, 6), breaks = 1:6) +
+  labs(
+    title    = "Mood by Day of Week",
+    subtitle = "Mean ± 1 SE · dashed = grand mean",
+    x = NULL, y = "Mean mood"
+  )
+ 
+
+p_mday <- ggplot(mday_agg, aes(date_num, irr_mean)) +
+    geom_ribbon(
+    aes(ymin = irr_mean - irr_se, ymax = irr_mean + irr_se),
+    fill = clr_line, alpha = .2
+  ) +
+  geom_line(color = clr_line, linewidth = .9)+
+  # geom_errorbar(
+  #   aes(ymin = irr_mean - irr_se, ymax = irr_mean + irr_se),
+  #   width = .2, color = clr_text, linewidth = .5
+  # )+
+    geom_point(aes(color = irr_mean, size = n)) +
+  mood_gradient +
+  geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+    scale_size_continuous(range = c(1.5, 5), name = "N") +
+  scale_x_continuous(
+    breaks = seq(1, 31, 1),
+    labels = paste0(c(seq(1, 31, 1)))
+  ) +
+  scale_y_continuous(limits = c(0, 6), breaks = 1:6) +
+  labs(
+    title    = "Mood by Day of Month",
+    subtitle = "Mean ± 1 SE · dashed = grand mean",
+    x = NULL, y = "Mean mood"
+  )
+
+ 
+ # important: hourly
+## 4f. Hour-of-day profile ────────────────────────────────────────────────────
+p_hour <- ggplot(hourly, aes(hour, irr_mean)) +
+  geom_ribbon(
+    aes(ymin = irr_mean - irr_se, ymax = irr_mean + irr_se),
+    fill = clr_line, alpha = .2
+  ) +
+  geom_line(color = clr_line, linewidth = .9) +
+  geom_point(aes(color = irr_mean, size = n)) +
+  mood_gradient +
+    geom_hline(
+    yintercept = grand_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+    scale_size_continuous(range = c(1.5, 5), name = "N") +
+  scale_x_continuous(
+    breaks = seq(6, 23, 1),
+    labels = paste0(seq(6, 23, 1), ":00")
+  ) +
+  scale_y_continuous(limits = c(1, 6), breaks = 1:6) +
+  labs(
+    title    = "Mood by Hour of Day",
+    subtitle = "Mean ± 1 SE across all beeps at that hour",
+    x = "Hour", y = "Mean mood"
+  )
+
+p_overall
+p_monthly
+ p_wday
+p_hour
+p_mday
+```
+
+
+```{r}
 # unimportant
 ## 4b. Weekly bar chart + LOESS ───────────────────────────────────────────────
-p_weekly <- ggplot(weekly, aes(week_start, mood_mean)) +
-  geom_col(aes(fill = mood_mean), width = 5, alpha = .85) +
+p_weekly <- ggplot(weekly, aes(week_start, tired_mean)) +
+  geom_col(aes(fill = tired_mean), width = 5, alpha = .85) +
   geom_smooth(
     method = "loess", span = .2, se = FALSE,
     color = clr_line, linewidth = 1
@@ -331,10 +539,10 @@ p_weekly <- ggplot(weekly, aes(week_start, mood_mean)) +
 
 ## 4d. Year-over-year seasonal overlay ───────────────────────────────────────
 p_yoy <- ggplot(monthly,
-                aes(month_num, mood_mean,
+                aes(month_num, tired_mean,
                     color = factor(year), group = year)) +
   geom_ribbon(
-    aes(ymin = mood_mean - mood_se, ymax = mood_mean + mood_se),
+    aes(ymin = tired_mean - tired_se, ymax = tired_mean + tired_se),
     fill = clr_line, alpha = .2
   )+
   geom_line(linewidth = .9, alpha = .85) +
@@ -356,10 +564,10 @@ p_yoy <- ggplot(monthly,
 ## 4g. Calendar heatmap — week × weekday, faceted by year ─────────────────────
 heat_data <- daily %>%
   group_by(year, week, wday, wday_num) %>%
-  summarise(mood_mean = mean(mood_mean), .groups = "drop")
+  summarise(tired_mean = mean(tired_mean), .groups = "drop")
  
 p_heat <- ggplot(heat_data,
-                 aes(x = week, y = fct_rev(wday), fill = mood_mean)) +
+                 aes(x = week, y = fct_rev(wday), fill = tired_mean)) +
   geom_tile(color = clr_bg, linewidth = .3) +
   facet_wrap(~year, ncol = 1) +
   scale_fill_gradient2(
@@ -385,7 +593,7 @@ p_heat <- ggplot(heat_data,
 ## 4h. Distribution violin + boxplot by year ──────────────────────────────────
 p_dist <- df %>%
   mutate(year = factor(year)) %>%
-  ggplot(aes(year, mood, fill = year)) +
+  ggplot(aes(year, tired, fill = year)) +
   geom_violin(alpha = .55, trim = FALSE, linewidth = .3) +
   geom_boxplot(width = .12, outlier.shape = NA,
                color = clr_text, alpha = .7) +
@@ -465,10 +673,6 @@ p_ov
 ```
 
 ```{r}
-require("lgpr")
-require("rstan")
-require("ggplot2")
-
 ```
 
 ```{r}
@@ -488,16 +692,13 @@ ggplot() +
   labs(x = "Time", y = "Irritation") +
   theme(legend.position = "none") +
   theme(aspect.ratio=0.9) +
-geom_smooth(data = df_shorter, aes(x=timestamp, y=mood_satisfi)) +
+geom_smooth(data = df_shorter, aes(x=timestamp, y=mood_irritat)) +
   ggtitle("Irritation levels") +
   theme(plot.title = element_text(size = 13, face = "bold")) 
 ```
 
 
 ```{r}
-library(ggplot2)
-library(tidyr)
-
 plot1 <-     ggplot(df_shorter[1:100,], aes(x=timestamp, y=mood_irritat)) + geom_point()
 plot2 <-     ggplot(df_shorter, aes(x=timestamp, y=mood_satisfi)) +geom_point()
 plot3 <-     ggplot(df_shorter, aes(x=timestamp, y=mood_lonely)) +geom_point()
@@ -527,8 +728,6 @@ df_shorter %>%
 ```
 # ---- analysis
 ```{r}
-install.packages('GauPro')
-library(GauPro)
 ```
 
 ```{r}
@@ -591,7 +790,7 @@ summary(gp14)
 ```
 ```{r}
 p_overall <- ggplot(daily, aes(timestamp, mood_mean)) +
-  geom_point(aes(color = mood_mean, size = n_beeps)) +
+  geom_point(aes(color = tired_mean, size = n_beeps)) +
   geom_smooth(
     method = "loess", span = .1, se = TRUE,
     color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
@@ -618,8 +817,8 @@ p_overall
 
 ```{r}
 daily_sh<- daily[907:1471,]
-p_overall <- ggplot(daily_sh, aes(timestamp, mood_mean)) +
-  geom_point(aes(color = mood_mean, size = n_beeps)) +
+p_overall <- ggplot(daily_sh, aes(timestamp, tired_mean)) +
+  geom_point(aes(color = tired_mean, size = n_beeps)) +
   geom_smooth(
     method = "loess", span = .1, se = TRUE,
     color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
@@ -649,7 +848,7 @@ summary(daily)
 ```{r}
 kernel_global<-k_Matern52(beta = 2)
 
-gp_daily_01 <- gpkm(daily_sh$timestamp, daily_sh$mood_mean, kernel = kernel_global)
+gp_daily_01 <- gpkm(daily_sh$timestamp, daily_sh$tired_mean, kernel = kernel_global)
 plot(gp_daily_01)
 summary(gp_daily_01)
 ```
@@ -658,7 +857,7 @@ summary(gp_daily_01)
 ```{r}
 kernel_global<-k_Gaussian(beta = 1)
 
-gp_daily_0 <- gpkm(daily_sh$timestamp, daily_sh$mood_mean, kernel = kernel_global)
+gp_daily_0 <- gpkm(daily_sh$timestamp, daily_sh$tired_mean, kernel = kernel_global)
 gpp_d0<-plot(gp_daily_0)
 gpp_d0
 summary(gp_daily_0)
@@ -670,7 +869,7 @@ summary(gp_daily_0)
 kernel_daily <- k_Periodic(p  = 7)
 kernel_global<-k_Gaussian(beta = 2)
 
-gp_daily_1 <- gpkm(daily_sh$timestamp, daily_sh$mood_mean, kernel = kernel_global + kernel_daily)
+gp_daily_1 <- gpkm(daily_sh$timestamp, daily_sh$tired_mean, kernel = kernel_global + kernel_daily)
 gpp_d1<-plot(gp_daily_1)
 ggsave("gp_daily_1.png", gpp_d1, width = 10, height = 6,
         dpi = 180)
@@ -680,7 +879,7 @@ summary(gp_daily_1)
 ```{r}
 kernel_daily <- k_Periodic(p  = 7, alpha = 7)
 
-gp_daily_11 <- gpkm(daily_sh$timestamp, daily_sh$mood_mean, kernel =  kernel_daily)
+gp_daily_11 <- gpkm(daily_sh$timestamp, daily_sh$tired_mean, kernel =  kernel_daily)
 plot(gp_daily_11)
 #ggsave("gp_daily_1.png", gpp_d1, width = 10, height = 6, dpi = 180)
 summary(gp_daily_11)
@@ -691,16 +890,16 @@ set.seed(12)
 daily_shsh<-daily[1:14,]
 #kernel_daily <- k_Periodic(p  = 1.5)
 
-f1 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 0.001))
-f10 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 0.14))
-f2 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 1))
-f3 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 1.75))
-f4 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 2))
-f5 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 2.5))
-f6 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 3))
-f7 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 3.5))
-f8 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 7))
-f9 <- gpkm(daily_shsh$timestamp, daily_shsh$mood_mean, kernel =  k_Periodic(p = 14))
+f1 <- gpkm(daily_shsh$timestamp, daily_shsh$tired_mean, kernel =  k_Periodic(p = 0.001))
+f10 <- gpkm(daily_shsh$timestamp, daily_shsh$tired_mean, kernel =  k_Periodic(p = 0.14))
+f2 <- gpkm(daily_shsh$timestamp, daily_shsh$tired_mean, kernel =  k_Periodic(p = 1))
+f3 <- gpkm(daily_shsh$timestamp, daily_shsh$tired_mean, kernel =  k_Periodic(p = 1.75))
+f4 <- gpkm(daily_shsh$timestamp, daily_shsh$tired_mean, kernel =  k_Periodic(p = 2))
+f5 <- gpkm(daily_shsh$timestamp, daily_shsh$tired_mean, kernel =  k_Periodic(p = 2.5))
+f6 <- gpkm(daily_shsh$timestamp, daily_shsh$tired_mean, kernel =  k_Periodic(p = 3))
+f7 <- gpkm(daily_shsh$timestamp, daily_shsh$tired_mean, kernel =  k_Periodic(p = 3.5))
+f8 <- gpkm(daily_shsh$timestamp, daily_shsh$tired_mean, kernel =  k_Periodic(p = 7))
+f9 <- gpkm(daily_shsh$timestamp, daily_shsh$tired_mean, kernel =  k_Periodic(p = 14))
 #ggsave("gp_daily_1.png", gpp_d1, width = 10, height = 6, dpi = 180)
 #summary(gp_daily_11)
 
@@ -717,4 +916,162 @@ plot(f9)
 
 f9$plotkernel()
 ```
+
+# - ----- what the hell is up with these kernels
+```{r}
+x<- c(1,  11, 15, 50)
+y <- c(1,3, 2, 1)
+
+f <- gpkm(x, y, kernel =  k_Periodic(p = 3.14/5))
+f$plotkernel()
+plot(f)
+```
+# ------------------- lgpr
+
+```{r}
+prior <- list(
+  alpha = normal(mu = 0, sigma = 1), # gaussian for magnitudes <alpha>
+  ell = igam(shape = 5, scale = 5) # inverse gamma for lengthscales <ell>
+)
+```
+
+
+
+```{r}
+fit <- lgp(irr_mean ~ gp(timestamp), data = daily,#, prior = prior
+  iter     = 500,
+  chains   = 2,
+  refresh  = 50
+)
+print(fit)
+```
+
+```{r}
+plot_components(fit,
+  ylim = c(1, 7),
+)
+
+component_names(fit)
+```
+
+```{r}
+t <- seq(-100, 100, by = 1)
+x_pred <- new_x(daily, t, x_ns = "timestamp")
+
+
+# Create function to wrangle the predictions to the correct format
+process_predictions <- function(predicted) {
+  # Extract and reshape predictions 
+  x <- as.data.frame(predicted@x)
+  y <- as.data.frame(predicted@y_mean) %>%
+    pivot_longer(cols = everything()) %>%
+    dplyr::select(-name) %>%
+    rename(y = value)
+
+  # Combine 
+  data <- cbind(x, y)
+  
+  return(data)
+}
+
+# Apply function for predictions for shared effect (f = fixed effect) and person-specific effect (r = random effects)
+gp_pred_f <- process_predictions(pred(fit, x_pred, reduce = mean, verbose = FALSE))
+#gp_pred_r <- process_predictions(pred(fit, reduce = mean, verbose = FALSE))
+```
+
+```{r}
+# Extract posterior samples from fit
+posterior_samples <- pred(fit)
+
+# Sort time points (months) for consistent plotting
+order <- order(daily$timestamp)
+timestamps <- daily$timestamp[order]
+posterior_samples <- posterior_samples@f_comp$`gp(timestamp)`[, order]
+
+# Convert to tidy format for summarising
+df_draws <- as_tibble(posterior_samples)
+colnames(df_draws) <- as.character(seq_along(colnames(df_draws)))
+
+# Reshape to long format
+df_draws <- df_draws %>%
+  mutate(draw = row_number()) %>%
+  pivot_longer(
+    cols = -draw,
+    names_to = "timestamp_index",
+    values_to = "value"
+  ) %>%
+  mutate(
+    timestamp_index = as.integer(timestamp_index),
+    timestamp = timestamp[timestamp_index]
+  )
+
+# Randomly select 1,000 posterior draws
+set.seed(123)  # for reproducibility
+draw_ids <- sample(unique(df_draws$draw), 1000)
+
+# Filter the data to keep only the selected draws
+df_draws_sampled <- df_draws %>%
+  filter(draw %in% draw_ids)
+
+# Get original mean and SD of life satisfaction,
+# to denormalise predictions back to the original scale of life satisfaction
+mean_ls <- mean(daily$irr_mean)
+sd_ls <- sd(daily$irr_mean)
+
+
+# Compute 95% credible intervals per month
+summary_df <- df_draws_sampled %>%
+  group_by(month) %>%
+  summarise(
+    lower_CI = quantile(value, 0.025),
+    upper_CI = quantile(value, 0.975),
+    .groups = "drop"
+  ) %>%
+  mutate(lower_CI = lower_CI * sd_ls + mean_ls,
+         upper_CI = upper_CI * sd_ls + mean_ls
+  )
+```
+
+
+```{r}
+# Create plot
+plot_base <-
+  ggplot() + theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black")
+  ) + 
+  labs(x = "time", y = "irritation") + 
+  scale_y_continuous(breaks = seq(1, 7, by = 1), limits = c(1, 7)) + 
+  scale_x_continuous(breaks = seq(-180, 180, by = 30),
+  limits = c(-180, 180)) + 
+  theme(legend.position = "none") + 
+  coord_fixed(ratio = 45)
+```
+```{r}
+plot_base + 
+  geom_ribbon(data = summary_df, aes(ymin = lower_CI, ymax = upper_CI, x = month),
+              alpha = 0.2, fill = "firebrick4") +
+  geom_line(data = gp_pred_f, aes(x = mnths, y = y),  color = "firebrick4", linewidth = 1) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+```
+
+
+
+```{r}
+# plot_pred(fit, pred = p)
+# 
+# plot_components(fit,
+#   pred = p,
+#   color_by = c(NA, NA, "sex", "group", "group", "group"),
+#   ylim = c(-3, 2),
+#   ncol = 2
+# )
+```
+
+
+#________________________________________________________________________________________________________________________________________
+
 
