@@ -29,40 +29,24 @@ suppressPackageStartupMessages({
   library(patchwork)
   library(viridis)
 })
-```
-
-
-```{r}
-#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
-data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
-
-names(data)[names(data)=="...1"] <- "datapoint"
-names<- colnames(data)
-mood_names <- names[grepl( "mood_", names, fixed = TRUE)]
-mood_data<-data[c("datapoint",mood_names)]
-mood_data<-data[c("datapoint", "mood_satisfi")]
-```
-
-```{r}
-
 
 set.seed(123)
-
-mdf <- melt(mood_data[1:500,],id.vars="datapoint")
-
-ggplot(mdf, aes( x=datapoint, y=value, colour=variable, group=variable )) + 
-  geom_line()# +
-  #scale_color_manual(values=c("y1"="black","y2"="red","y3"="orange")) +
-  #scale_linetype_manual(values=c("y1"="solid","y2"="solid","y3"="dashed"))
-
 ```
 
-```{r}
-
- 
-```
 
 ```{r}
+data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
+#data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
+
+names(data)[names(data)=="...1"] <- "datapoint"
+#names<- colnames(data)
+#mood_names <- names[grepl( "mood_", names, fixed = TRUE)]
+#mood_data<-data[c("datapoint",mood_names)]
+#mood_data<-data[c("datapoint", "mood_satisfi")]
+
+#mdf <- melt(mood_data[1:500,],id.vars="datapoint")
+#ggplot(mdf, aes( x=datapoint, y=value, colour=variable, group=variable )) + geom_line()
+
 df <- data %>%
   mutate(
     # --- temporal parsing ---
@@ -85,11 +69,6 @@ df <- data %>%
   filter(!is.na(date_parsed), tired >= 1, tired <= 7, irritated >= 1, irritated <= 7)
  
 ```
-
-```{r}
-max(df$date_parsed) #"2012-08-13" "2013-04-08"
-```
-
 
 ```{r}
 # one row per calendar day
@@ -171,7 +150,7 @@ mday_agg <- df %>%
   arrange(date_num)
  
 ```
-
+#------ plots
 ```{r}
 clr_bg     <- "#FFFFFF" #"#0f1117"
 clr_panel  <- "#FFFFFF"#"#181b24"
@@ -215,13 +194,9 @@ theme_mood <- function(base_size = 12) {
     )
 }
 theme_set(theme_mood())
- 
-
- 
 ```
 
 ```{r}
-
 grand_mean <- mean(df$tired, na.rm = TRUE)
 # important: overall
 ## 4a. Overall trajectory — raw daily means + LOESS ───────────────────────────
@@ -246,8 +221,6 @@ p_overall <- ggplot(daily, aes(date_parsed, tired_mean)) +
   ) +
   theme(axis.text.x = element_text(angle = 30, hjust = 1))
  
-
-
  ## 4c. Monthly line + SE ribbon ───────────────────────────────────────────────
 p_monthly <- ggplot(monthly, aes(date_label, tired_mean)) +
   geom_ribbon(
@@ -271,7 +244,6 @@ p_monthly <- ggplot(monthly, aes(date_label, tired_mean)) +
   ) +
   theme(legend.position = "right")
  
-
 # important: weekly
 ## 4e. Day-of-week bar chart ───────────────────────────────────────────────────
 p_wday <- ggplot(wday_agg, aes(wday_num, tired_mean)) +
@@ -301,7 +273,6 @@ p_wday <- ggplot(wday_agg, aes(wday_num, tired_mean)) +
     subtitle = "Mean ± 1 SE · dashed = grand mean",
     x = NULL, y = "Mean mood"
   )
- 
 
 p_mday <- ggplot(mday_agg, aes(date_num, tired_mean)) +
     geom_ribbon(
@@ -331,7 +302,6 @@ p_mday <- ggplot(mday_agg, aes(date_num, tired_mean)) +
     x = NULL, y = "Mean mood"
   )
 
- 
  # important: hourly
 ## 4f. Hour-of-day profile ────────────────────────────────────────────────────
 p_hour <- ggplot(hourly, aes(hour, tired_mean)) +
@@ -661,26 +631,10 @@ ggsave("hour_tir.png", p_hour, width = 10, height = 6,
 message("Saved: mood_overview.png  |  mood_patterns.png  |  mood_heatmap.png")
 ```
 
-
-```{r}
- # data 1476
- # df 1473
- # daily 238 by n_beeps, 1473 , hourly, monthly, wday_agg, all good
-p_ov <- ggplot(df, aes(datapoint, mood_satisfi)) +
-  geom_point(aes(color = clr_text), size = 1, alpha = .45)
- 
-p_ov
-```
-
-```{r}
-```
-
+#---- df shorter plots
 ```{r}
 df_shorter<- df[c("timestamp", "mood_irritat", "mood_satisfi", "mood_enthus", "mood_down", "mood_lonely", "phy_tired")]
-
-
 df_shorter
-
 ```
 
 ```{r}
@@ -726,9 +680,7 @@ df_shorter %>%
     ggplot(aes(x=timestamp, y=value, colour=key)) +
     geom_smooth()
 ```
-# ---- analysis
-```{r}
-```
+# ---- gau pro analysis
 
 ```{r}
 
@@ -935,8 +887,6 @@ prior <- list(
 )
 ```
 
-
-
 ```{r}
 fit <- lgp(irr_mean ~ gp(timestamp), data = daily,#, prior = prior
   iter     = 500,
@@ -947,131 +897,39 @@ print(fit)
 ```
 
 ```{r}
+dat<- data.frame("time"=daily$timestamp, "mean"=daily$irr_mean, "pred"=(c((gp_p@y_mean)[1,])))
+dat
+mean_n<- mean(dat$mean)
+gp_p<- pred(fit)
+ggplot(dat, aes(time, pred))+geom_line(color = clr_pos)+ geom_point(aes(x = time, y =mean)) + geom_hline(yintercept =mean_n, color = clr_accent, linetype = "dashed")
+```
+```{r}
+ plot_pred(fit,  group_by = NA, t_name = "timestamp")
+
+
 plot_components(fit,
-  ylim = c(1, 7),
+ group_by = NA, t_name = "timestamp"
 )
-
-component_names(fit)
-```
-
-```{r}
-t <- seq(-100, 100, by = 1)
-x_pred <- new_x(daily, t, x_ns = "timestamp")
-
-
-# Create function to wrangle the predictions to the correct format
-process_predictions <- function(predicted) {
-  # Extract and reshape predictions 
-  x <- as.data.frame(predicted@x)
-  y <- as.data.frame(predicted@y_mean) %>%
-    pivot_longer(cols = everything()) %>%
-    dplyr::select(-name) %>%
-    rename(y = value)
-
-  # Combine 
-  data <- cbind(x, y)
-  
-  return(data)
-}
-
-# Apply function for predictions for shared effect (f = fixed effect) and person-specific effect (r = random effects)
-gp_pred_f <- process_predictions(pred(fit, x_pred, reduce = mean, verbose = FALSE))
-#gp_pred_r <- process_predictions(pred(fit, reduce = mean, verbose = FALSE))
-```
-
-```{r}
-# Extract posterior samples from fit
-posterior_samples <- pred(fit)
-
-# Sort time points (months) for consistent plotting
-order <- order(daily$timestamp)
-timestamps <- daily$timestamp[order]
-posterior_samples <- posterior_samples@f_comp$`gp(timestamp)`[, order]
-
-# Convert to tidy format for summarising
-df_draws <- as_tibble(posterior_samples)
-colnames(df_draws) <- as.character(seq_along(colnames(df_draws)))
-
-# Reshape to long format
-df_draws <- df_draws %>%
-  mutate(draw = row_number()) %>%
-  pivot_longer(
-    cols = -draw,
-    names_to = "timestamp_index",
-    values_to = "value"
-  ) %>%
-  mutate(
-    timestamp_index = as.integer(timestamp_index),
-    timestamp = timestamp[timestamp_index]
-  )
-
-# Randomly select 1,000 posterior draws
-set.seed(123)  # for reproducibility
-draw_ids <- sample(unique(df_draws$draw), 1000)
-
-# Filter the data to keep only the selected draws
-df_draws_sampled <- df_draws %>%
-  filter(draw %in% draw_ids)
-
-# Get original mean and SD of life satisfaction,
-# to denormalise predictions back to the original scale of life satisfaction
-mean_ls <- mean(daily$irr_mean)
-sd_ls <- sd(daily$irr_mean)
-
-
-# Compute 95% credible intervals per month
-summary_df <- df_draws_sampled %>%
-  group_by(month) %>%
-  summarise(
-    lower_CI = quantile(value, 0.025),
-    upper_CI = quantile(value, 0.975),
-    .groups = "drop"
-  ) %>%
-  mutate(lower_CI = lower_CI * sd_ls + mean_ls,
-         upper_CI = upper_CI * sd_ls + mean_ls
-  )
-```
-
-
-```{r}
-# Create plot
-plot_base <-
-  ggplot() + theme(
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.background = element_blank(),
-    axis.line = element_line(colour = "black")
-  ) + 
-  labs(x = "time", y = "irritation") + 
-  scale_y_continuous(breaks = seq(1, 7, by = 1), limits = c(1, 7)) + 
-  scale_x_continuous(breaks = seq(-180, 180, by = 30),
-  limits = c(-180, 180)) + 
-  theme(legend.position = "none") + 
-  coord_fixed(ratio = 45)
 ```
 ```{r}
-plot_base + 
-  geom_ribbon(data = summary_df, aes(ymin = lower_CI, ymax = upper_CI, x = month),
-              alpha = 0.2, fill = "firebrick4") +
-  geom_line(data = gp_pred_f, aes(x = mnths, y = y),  color = "firebrick4", linewidth = 1) +
-  ggtitle("Gaussian Process Regression") +
-  theme(plot.title = element_text(size = 13, face = "bold"))
+fit <- lgp(irr_mean ~ gp_ns(timestamp), data = daily,#, prior = prior
+  iter     = 500,
+  chains   = 2,
+  refresh  = 50
+)
+print(fit)
 ```
-
-
-
+# nonstationary kernel produces flat result
 ```{r}
-# plot_pred(fit, pred = p)
-# 
-# plot_components(fit,
-#   pred = p,
-#   color_by = c(NA, NA, "sex", "group", "group", "group"),
-#   ylim = c(-3, 2),
-#   ncol = 2
-# )
+l<-pred(fit)
+ plot_pred(fit,  group_by = NA, t_name = "timestamp")
+
+
+plot_components(fit,
+ group_by = NA, t_name = "timestamp"
+)
 ```
 
-
-#________________________________________________________________________________________________________________________________________
+#___________________________________________________STAN_____________________________________________________________________________________
 
 

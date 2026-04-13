@@ -3,4 +3,5 @@
 *.exe
 */output/*
 *.png
+*.jpg
 *.html
