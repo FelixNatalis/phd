@@ -35,8 +35,8 @@ set.seed(123)
 
 
 ```{r}
-data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
-#data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
+#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
+data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
 
 names(data)[names(data)=="...1"] <- "datapoint"
 #names<- colnames(data)
@@ -57,7 +57,7 @@ df <- data %>%
  
     # --- derived time components ---
     datetime = as.POSIXct(as.character(paste(date_parsed, beeptime)), format="%Y-%m-%d %H:%M:%S"),
-    timestamp = as.numeric(datetime),
+    timestamp = as.numeric(datetime),# the number of seconds that have passed between date object and 1/1/1970
     year      = year(date_parsed),
     month_num = month(date_parsed),
     date_num = day(date_parsed),
@@ -932,4 +932,185 @@ plot_components(fit,
 
 #___________________________________________________STAN_____________________________________________________________________________________
 
+```{r}
+install.packages("tictoc")
+install.packages("cmdstanr")
+install.packages("tinytable")
+library(rprojroot)
+root <- has_file(".Bayesian-Workflow-root")$make_fix_file()
+library(tidyverse)
+library(tictoc)
+mytoc <- \() {
+  toc(func.toc = \(tic, toc, msg) {
+    sprintf("%s took %s sec", msg, as.character(signif(toc - tic, 2)))
+  })}
+library(cmdstanr)
+# CmdStanR output directory makes Quarto cache to work
+dir.create(root("stan", "stan_output"), showWarnings = FALSE)
+options(cmdstanr_output_dir = root("stan", "stan_output"))
+library(posterior)
+options(pillar.neg = FALSE,
+        pillar.subtle = FALSE,
+        pillar.sigfig = 2)
+library(tinytable)
+options(tinytable_format_num_fmt = "significant_cell",
+        tinytable_format_digits = 2,
+        tinytable_tt_digits = 2)
+library(loo)
+library(bayesplot)
+theme_set(bayesplot::theme_default(base_family = "sans"))
+library(ggdist)
+library(patchwork)
+library(ggrepel)
+library(RColorBrewer)
+set1 <- brewer.pal(7, "Set1")
+Sys.setlocale("LC_TIME", "en_GB.utf8")
+source(root("stan", "plot_helpers.R"))
+```
+```{r}
+
+```
+
+```{r}
+df_rel <- df_shorter |>
+  mutate(births_relative100 = births / mean(births) * 100)
+```
+
+```{r}
+irr_g_mean <- mean(df_shorter$mood_irritat)
+ti_g_mean <- mean(df_shorter$phy_tired)
+
+irr<-ggplot(df_shorter, aes(timestamp, mood_irritat)) +
+  geom_point()+#aes(color = tired_mean, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = irr_g_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+ # mood_gradient +
+  scale_y_continuous(limits = c(1, 7), breaks = 1:7) +
+    #scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+  #scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood irritation (1–7)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+ti<-ggplot(df_shorter, aes(timestamp, phy_tired)) +
+  geom_point()+#aes(color = tired_mean, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = ti_g_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+ # mood_gradient +
+  scale_y_continuous(limits = c(1, 7), breaks = 1:7) +
+    #scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+  #scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood tiredness (1–7)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+irr
+ti
+
+ggsave("irr_all_weeks.png", irr, width = 10, height = 6,
+        dpi = 180)
+ggsave("ti_all_weeks.png", ti, width = 10, height = 6,
+        dpi = 180)
+```
+```{r}
+irr<- ggplot(daily, aes(timestamp, irr_mean)) +
+  geom_point(aes(color = wday_num, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = irr_g_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+ # mood_gradient +
+  scale_y_continuous(limits = c(1, 7), breaks = 1:7) +
+    scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "Daily mean · LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood irritation (1–7)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+ti<- ggplot(daily, aes(timestamp, tired_mean)) +
+  geom_point(aes(color = wday_num, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = ti_g_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+ # mood_gradient +
+  scale_y_continuous(limits = c(1, 7), breaks = 1:7) +
+    scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "Daily mean · LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood tiredness (1–7)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+irr
+ti
+ggsave("irr_daily_weeks.png", irr, width = 10, height = 6,
+        dpi = 180)
+ggsave("ti_daily_weeks.png", ti, width = 10, height = 6,
+        dpi = 180)
+```
+
+```{r}
+model1 <- cmdstan_model(stan_file = root("stan", "gpbf1.stan"),
+                        include_paths = root("stan"))
+```
+```{r}
+standata1 <- list(x = daily$timestamp,
+                  y = log(daily$tired_mean),
+                  N = length(daily$timestamp),
+                  c_f1 = 1.5,
+                  M_f1 = 20)
+```
+
+```{r}
+tic('Finding MAP for model 1 with optimization')
+opt1 <- model1$optimize(data = standata1, init = 0, algorithm = "bfgs",
+                        jacobian = TRUE)
+```
+```{r}
+mytoc()
+```
+
+```{r}
+odraws1 <- opt1$draws()
+subset(odraws1, variable = c("intercept", "sigma_f1", "lengthscale_f1", "sigma")) |>
+  as.data.frame() |>
+  tt()
+```
+
+```{r}
+oEf <- exp(as.numeric(subset(odraws1, variable = "f")))
+make_pf(daily, oEf)
+```
 
