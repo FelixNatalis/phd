@@ -1272,6 +1272,8 @@ pf   <- make_pf(daily, Ef)
 pf1  <- make_pf1(daily, Ef1)
 pf2  <- make_pf2(daily, Ef2, date_breaks = "2 month")
 pf3b <- make_pf3b(daily, Ef3)
-compose_4panel(pf, pf1, pf2, pf3b)
+p<- compose_4panel(pf, pf1, pf2, pf3b)
+
+ggsave("stan_fit_4.png", p, width = 10, height = 6,dpi = 180)
 ```
 
