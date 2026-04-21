@@ -1341,13 +1341,9 @@ pf3 <- make_pf3(daily, Ef_day_of_week)
 compose_4panel(pf, pf1, pf2, pf3)
 ```
 
-```{r}
-# day effects? holidays? model 5.1.5 normal prior
 
-```
-
+# comparison, sometime later
 ```{r}
-# comparison
 loo1 <- fit1$loo()
 loo2 <- fit2$loo()
 loo3 <- fit3$loo()
@@ -1544,5 +1540,117 @@ pf1 <- make_pf1(daily, Ef1)
 pf2 <- make_pf2(daily, Ef2)
 pf3 <- make_pf3(daily, Ef3)
 compose_4panel(pf, pf1, pf2, pf3)
+```
+# todo detrending
+
+```{r}
+df
+
+mean_irr <- mean(df$irritated)
+mean_tir <- mean(df$tired)
+
+df$irritated <- df$irritated - mean_irr
+df$tired <- df$tired - mean_tir
+
+daily_d <- df %>%
+  group_by(date_parsed, year, month, month_num, week, wday, wday_num) %>%
+  summarise(
+    tired_mean = mean(tired),
+    tired_sd   = sd(tired),
+    irr_mean = mean(irritated),
+    irr_sd = sd(irritated),
+    n_beeps   = n(),
+    .groups   = "drop"
+  )
+
+daily_d <- daily_d %>% mutate(
+  timestamp = as.numeric(date_parsed),
+  day = row_number(),
+  day_of_year = as.numeric(strftime(date_parsed, format = "%j")),
+  day_of_month = day(date_parsed)
+)
+
+p_irr <- daily_d |>  ggplot(aes(x = day, y = irr_mean)) +geom_point() + hline_0(color = "red")
+p_tir <- daily_d |>  ggplot(aes(x = day, y = tired_mean)) +geom_point()+ hline_0(color = "red")
+p_irr
+p_tir
+```
+# detrended values, removed logs and exps, pathfinder is the same
+```{r}
+model3_5 <- cmdstan_model(stan_file = root("stan", "gpbf3_5.stan"),include_paths = root("stan"))
+
+standata3_5 <- list(x = daily_d$day,
+                  y = (daily_d$irr_mean),
+                  N = length(daily_d$day),
+                  c_f1 = 1.5, # factor c of basis functions for GP for f1
+                  M_f1 = 20,  # number of basis functions for GP for f1
+                  J_f2 = 20,  # number of basis functions for periodic f2
+                  J_f3 = 20)
+
+tic('Sampling from Pathfinder approximation of model 3 posterior')
+pth3_5 <- model3_5$pathfinder(data = standata3_5, init = 0.1,
+                          num_paths = 10, single_path_draws = 40, draws = 400,
+                          history_size = 50, max_lbfgs_iters = 100, 
+                          refresh = 0, psis_resample=FALSE)
+
+pdraws3_5 <- pth3_5$draws()
+summarise_draws(subset(pdraws3_5, variable = c("lp__")), n_distinct) |>
+  tt()
+
+summarise_draws(subset(pdraws3_5, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE),
+                default_summary_measures()) |>
+  tt()
+
+draws3_5 <- as_draws_matrix(pdraws3_5)
+Ef <- (apply(subset(draws3_5, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3_5, variable = "f1"), 2, median)
+Ef1 <- (Ef1 - mean(Ef1) + mean((daily_d$irr_mean)))
+Ef2 <- apply(subset(draws3_5, variable = "f2"), 2, median)
+Ef2 <- (Ef2 - mean(Ef2) + mean((daily_d$irr_mean)))
+Ef3 <- apply(subset(draws3_5, variable = "f3"), 2, median)
+Ef3 <- (Ef3 - mean(Ef3) + mean((daily_d$irr_mean)))
+#Ef_day_of_week <- apply(subset(draws3_5, variable = "f_day_of_week"), 2, median)
+#Ef_day_of_week <- exp(Ef_day_of_week - mean(Ef_day_of_week) + mean(log(daily_d$irr_mean)))
+pf  <- make_pf(daily_d, Ef)
+pf1 <- make_pf1(daily_d, Ef1)
+pf2 <- make_pf2(daily_d, Ef2)
+pf3 <- make_pf3(daily_d, Ef3)
+compose_4panel(pf, pf1, pf2, pf3)
+
+```
+
+```{r}
+tic('MCMC sampling from model 3_5 posterior with Pathfinder initialization')
+fit3_5 <- model3_5$sample(data = standata3_5, iter_warmup = 100, iter_sampling = 100, chains = 4, parallel_chains = 4,  init = pth3_5)
+draws3_5 <- fit3_5$draws()
+summarise_draws(subset(draws3_5, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE)) |>
+  tt()
+
+draws3_5 <- as_draws_matrix(draws3_5)
+Ef <- (apply(subset(draws3_5, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3_5, variable = "f1"), 2, median)
+Ef1 <- (Ef1 - mean(Ef1) + mean((daily_d$irr_mean)))
+Ef2 <- apply(subset(draws3_5, variable = "f2"), 2, median)
+Ef2 <- (Ef2 - mean(Ef2) + mean((daily_d$irr_mean)))
+Ef3 <- apply(subset(draws3_5, variable = "f3"), 2, median)
+Ef3 <- (Ef3 - mean(Ef3) + mean((daily_d$irr_mean)))
+pf  <- make_pf(daily_d, Ef)
+pf1 <- make_pf1(daily_d, Ef1)
+pf2 <- make_pf2(daily_d, Ef2, date_breaks = "2 month")
+pf3 <- make_pf3(daily_d, Ef3)
+compose_4panel(pf, pf1, pf2, pf3)
+```
+
+```{r}
+ggsave("stan_final_detrended.png", compose_4panel(pf, pf1, pf2, pf3), width = 10, height = 6,
+        dpi = 180)
+save(fit3_5, file = "fit3_5_irr_detrended.RData")
+```
+
+
+# todo informative priors
+
+```{r}
+
 ```
 
