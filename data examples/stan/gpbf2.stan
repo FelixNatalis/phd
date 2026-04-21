@@ -41,7 +41,7 @@ transformed data {
   real L_f1 = c_f1*max(xn);
   matrix[N,M_f1] PHI_f1 = PHI(N, M_f1, L_f1, xn);
   // Basis functions for f2
-  real period_year = 365.25/xsd;
+  real period_year = 30.4/xsd;
   matrix[N,2*J_f2] PHI_f2 = PHI_periodic(N, J_f2, 2*pi()/period_year, xn);
   // Concatenated basis functions
   matrix[N,M_f1+2*J_f2] PHI_f = append_col(PHI_f1, PHI_f2);

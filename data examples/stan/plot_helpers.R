@@ -32,7 +32,14 @@ layers_hline1 <- list(
 
 #' Standard axis labels for date-vs-births panels
 layers_labs_date <- list(
-  labs(x = "Date", y = "Relative number of births")
+  labs(x = "Date", y = "Mood")
+)
+
+layers_scale_dom <- list(
+  scale_x_continuous(
+    breaks = seq(1, 30, by = 4),
+    labels = seq(1, 30, by = 4)
+  )
 )
 
 #' Month-tick x-axis for day-of-year panels (pf2, pf2b, pf2c)
@@ -122,7 +129,7 @@ make_pf <- function(data, Ef_vec, fit_geom = c("line", "point")) {
   fit_geom <- match.arg(fit_geom)
   p <- data |>
     mutate(.Ef = Ef_vec) |>
-    ggplot(aes(x = day, y = tired_mean)) +
+    ggplot(aes(x = day, y = irr_mean)) +#tired_mean
     layers_data_scatter +
     layers_labs_date
   if (fit_geom == "line") {
@@ -139,7 +146,7 @@ make_pf <- function(data, Ef_vec, fit_geom = c("line", "point")) {
 make_pf1 <- function(data, Ef1_vec) {
   data |>
     mutate(.Ef1 = Ef1_vec) |>
-    ggplot(aes(x = day, y = tired_mean)) +
+    ggplot(aes(x = day, y = irr_mean)) +#tired_mean
     layers_data_scatter +
     geom_line(aes(y = .Ef1), color = col_fit) +
     layers_labs_date
@@ -154,20 +161,21 @@ make_pf1 <- function(data, Ef1_vec) {
 #'                  nrow(data)); will be averaged over day_of_year2
 #'   date_breaks — passed to scale_x_date; use "2 month" for the
 #'                  compact 4-panel layout (model 4b fit)
-make_pf2 <- function(data, Ef2_vec, date_breaks = "1 month") {
+make_pf2 <- function(data, Ef2_vec, date_breaks = "1 day") {
   data |>
     mutate(.Ef2 = Ef2_vec) |>
-    group_by(day_of_year) |>
+    group_by(day_of_month) |>
     summarise(
-      meanbirths = mean(tired_mean),
+      meanbirths = mean(irr_mean),#tired_mean
       meanEf2    = mean(.Ef2)
     ) |>
     ggplot(aes(
-      x = as.Date("1987-12-31") + day_of_year,
+      x = day_of_month,
       y = meanbirths
     )) +
     layers_data_scatter +
-    scale_x_date(date_breaks = date_breaks, date_labels = "%b") +
+    layers_scale_dom +
+    #scale_x_date(date_breaks = date_breaks, date_labels = "%b") +
     geom_line(aes(y = meanEf2), color = col_fit) +
     layers_labs_date
 }
@@ -178,16 +186,33 @@ make_pf2 <- function(data, Ef2_vec, date_breaks = "1 month") {
 #'                  births_relative100)
 #'   Ef_dow_vec  — numeric vector of length 7 (one value per weekday)
 make_pf3 <- function(data, Ef_dow_vec) {
-  ggplot(data = data, aes(x = wday_num, y = tired_mean)) +
+  data |>
+    mutate(.Ef3 = Ef_dow_vec) |>
+    group_by(wday_num) |>
+    summarise(
+      meanbirths = mean(irr_mean),#tired_mean
+      meanEf3    = mean(.Ef3)
+    ) |>
+    ggplot(aes(
+      x = wday_num,
+      y = meanbirths
+    )) +
     layers_data_scatter +
     layers_scale_weekday +
-    geom_line(
-      data = data.frame(x = 1:7, y = Ef_dow_vec),
-      aes(x = x, y = y),
-      color = col_fit
-    ) +
+    #scale_x_date(date_breaks = date_breaks, date_labels = "%b") +
+    geom_line(aes(y = meanEf3), color = col_fit) +
     layers_labs_date
 }
+#   ggplot(data = data, aes(x = day, y = tired_mean)) +
+#     layers_data_scatter +
+#     #layers_scale_weekday +
+#     geom_line(
+#       data = data.frame(x = data$day, y = Ef_dow_vec),
+#       aes(x = x, y = y),
+#       color = col_fit
+#     ) +
+#     layers_labs_date
+# }
 
 #' make_pf3b(data, Ef3_vec, Ef1_vec, weekday_labels = FALSE)
 #'   Time-varying weekday magnitude component.
@@ -226,7 +251,7 @@ make_pf3b <- function(data, Ef3_vec, Ef1_vec = NULL,
       p <- p +
         annotate(
           "text",
-          x     = as.Date("1989-08-01"),
+          x     = 238,
           y     = combined[c((N - 5):(N - 4), N, N - 6)],
           label = c("Mon", "Tue", "Sat", "Sun")
         )
