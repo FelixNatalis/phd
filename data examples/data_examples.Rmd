@@ -944,10 +944,10 @@ plot_components(fit,
 #___________________________________________________STAN_____________________________________________________________________________________
 
 ```{r}
-install.packages("tictoc")
-install.packages("cmdstanr")
-install.packages("tinytable")
-install.packages("rprojroot")
+# install.packages("tictoc")
+# install.packages("cmdstanr")
+# install.packages("tinytable")
+# install.packages("rprojroot")
 library(rprojroot)
 root <- has_file(".Bayesian-Workflow-root")$make_fix_file()
 library(tidyverse)
@@ -1629,11 +1629,11 @@ summarise_draws(subset(draws3_5, variable = c("sigma_", "lengthscale_", "sigma")
 draws3_5 <- as_draws_matrix(draws3_5)
 Ef <- (apply(subset(draws3_5, variable = "f"), 2, median))
 Ef1 <- apply(subset(draws3_5, variable = "f1"), 2, median)
-Ef1 <- (Ef1 - mean(Ef1) + mean((daily_d$irr_mean)))
+#Ef1 <- (Ef1 - mean(Ef1) + mean((daily_d$irr_mean)))
 Ef2 <- apply(subset(draws3_5, variable = "f2"), 2, median)
-Ef2 <- (Ef2 - mean(Ef2) + mean((daily_d$irr_mean)))
+#Ef2 <- (Ef2 - mean(Ef2) + mean((daily_d$irr_mean)))
 Ef3 <- apply(subset(draws3_5, variable = "f3"), 2, median)
-Ef3 <- (Ef3 - mean(Ef3) + mean((daily_d$irr_mean)))
+#Ef3 <- (Ef3 - mean(Ef3) + mean((daily_d$irr_mean)))
 pf  <- make_pf(daily_d, Ef)
 pf1 <- make_pf1(daily_d, Ef1)
 pf2 <- make_pf2(daily_d, Ef2, date_breaks = "2 month")
@@ -1645,12 +1645,163 @@ compose_4panel(pf, pf1, pf2, pf3)
 ggsave("stan_final_detrended.png", compose_4panel(pf, pf1, pf2, pf3), width = 10, height = 6,
         dpi = 180)
 save(fit3_5, file = "fit3_5_irr_detrended.RData")
+load(file = "fit3_5_irr_detrended.RData")
+```
+
+# no pathfinder init
+```{r}
+#tic('MCMC sampling from model 3_5 posterior with Pathfinder initialization')
+fit3_5_n <- model3_5$sample(data = standata3_5, iter_warmup = 50, iter_sampling = 50, chains = 3, parallel_chains = 3)#,  init = pth3_5)
+draws3_5_n <- fit3_5_n$draws()
+summarise_draws(subset(draws3_5_n, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE)) |>
+  tt()
+
+draws3_5_n <- as_draws_matrix(draws3_5_n)
+Ef <- (apply(subset(draws3_5_n, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3_5_n, variable = "f1"), 2, median)
+#Ef1 <- (Ef1 - mean(Ef1) + mean((daily_d$irr_mean)))
+Ef2 <- apply(subset(draws3_5_n, variable = "f2"), 2, median)
+#Ef2 <- (Ef2 - mean(Ef2) + mean((daily_d$irr_mean)))
+Ef3 <- apply(subset(draws3_5_n, variable = "f3"), 2, median)
+#Ef3 <- (Ef3 - mean(Ef3) + mean((daily_d$irr_mean)))
+pf  <- make_pf(daily_d, Ef)
+pf1 <- make_pf1(daily_d, Ef1)
+pf2 <- make_pf2(daily_d, Ef2, date_breaks = "2 month")
+pf3 <- make_pf3(daily_d, Ef3)
+compose_4panel(pf, pf1, pf2, pf3)
+```
+# simple model
+```{r}
+library(dplyr)
+library(rstan)
+library(ggplot2)
+
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+
+stan_data <- list(
+  N = nrow(daily_d),
+  y = daily_d$irr_mean,
+  x = daily_d$day
+)
+
+fit_eq_overall <- stan(
+  file = "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/stan/gp_eq_overall.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_eq_overall,
+  pars = c("rho","alpha","sigma","eta")
+)
+
+save(
+  fit_eq_overall,
+  file = "fit_eq_overall.RData"
+)
+
+
+post_eq_overall <- rstan::extract(fit_eq_overall)
+eta <- apply(post_eq_overall$eta, 2, mean)
+plot(daily_d$day, eta)
+```
+```{r}
+
+stan_data <- list(
+  N1 = nrow(daily_d),
+  y1 = daily_d$irr_mean,
+  x1 = daily_d$day,
+  N2 = 62,
+  x2 = seq(239, 300, by = 1)
+)
+
+fit_eq_overall_pr <- stan(
+  file = "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/stan/gp_eq_overall_predictive.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_eq_overall_pr,
+  pars = c("rho","alpha","sigma","eta")
+)
+
+# save(
+#   fit_eq_overall_pr,
+#   file = "fit_eq_overall_pr.RData"
+# )
+
+
+post_eq_overall_pr <- rstan::extract(fit_eq_overall_pr)
+y2 <- apply(post_eq_overall_pr$y2, 2, mean)
+pred <- data.frame(x = append(daily_d$day, seq(239, 300, by = 1)), y = append(daily_d$irr_mean, y2))
+plot( seq(239, 300, by = 1), y2)
+plot(pred$x, pred$y)
+```
+
+# check fit
+```{r}
+stan_data <- list(
+  N = nrow(daily_d),
+  y = daily_d$irr_mean,
+  x = daily_d$day
+)
+
+fit_eq_overall <- stan(
+  file = "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/stan/gp_eq_overall.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_eq_overall,
+  pars = c("rho","alpha","sigma","eta", "fit")
+)
+
+# save(
+#   fit_eq_overall,
+#   file = "fit_eq_overall.RData"
+# )
+
+
+post_eq_overall <- rstan::extract(fit_eq_overall)
+fit <- apply(post_eq_overall$fit, 2, mean)
+par(mfrow = c(1, 2))
+p1<-plot(daily_d$day, fit)
+p2<-plot(daily_d$day, daily_d$irr_mean)
+p1
+p2
+```
+
+```{r}
+var( daily_d$irr_mean)
+par(mfrow = c(1, 2))
+#pred <- 
+p1<-plot(daily_d$day, fit, type = "l")
+p2<-plot(daily_d$day, (daily_d$irr_mean)/(var(daily_d$irr_mean)))
+p1
+p2
 ```
 
 
 # todo informative priors
 
 ```{r}
+
 
 ```
 
