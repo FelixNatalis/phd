@@ -25,7 +25,7 @@ transformed parameters{
     
    {
     matrix[N, N] L_K;
-    matrix[N, N] K = gp_exp_quad_cov(x, sqrt(variance), sqrt(length_scale));
+    matrix[N, N] K = gp_exp_quad_cov(x, variance, length_scale);
 
     // diagonal elements
     for (n in 1:N) {
@@ -41,7 +41,7 @@ model{
    // priors 
    intercept ~ normal(0, 5);
    length_scale ~ inv_gamma(1, 15);
-   variance ~ inv_gamma(1, 15);
+   variance ~  inv_gamma(1, 15);
    sigma ~ std_normal();
    eta ~ std_normal();
 

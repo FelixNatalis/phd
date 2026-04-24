@@ -17,8 +17,9 @@ transformed data {
   }
 }
 parameters {
-  real<lower=0> rho;
-  real<lower=0> alpha;
+  real intercept;
+  real<lower=0> length_scale;
+  real<lower=0> variance;
   real<lower=0> sigma;
   vector[N] eta;
 }
@@ -26,7 +27,7 @@ transformed parameters {
   vector[N] f;
   {
     matrix[N, N] L_K;
-    matrix[N, N] K = gp_exp_quad_cov(x, alpha, rho);
+    matrix[N, N] K = gp_exp_quad_cov(x, variance, length_scale);
 
     // diagonal elements
     for (n in 1:N) {
@@ -38,16 +39,18 @@ transformed parameters {
   }
 }
 model {
-  rho ~ inv_gamma(5, 1);
-  alpha ~ normal(100, 50);
+  intercept ~ normal(0, 5);
+  length_scale ~ inv_gamma(5, 1);
+  variance ~ normal(100, 50);
   sigma ~ normal(1000, 50);
   eta ~ normal(100, 10);
 
-  y1 ~ normal(f[1:N1], sigma);
+  y1 ~ normal(intercept + f[1:N1], sigma);
 }
 generated quantities {
+  vector[N1] fit = intercept + f[1:N1];
   vector[N2] y2;
   for (n2 in 1:N2) {
-    y2[n2] = normal_rng(f[N1 + n2], sigma);
+    y2[n2] = normal_rng(intercept + f[N1 + n2], sigma);
   }
 }
