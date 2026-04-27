@@ -26,32 +26,43 @@ parameters{
 transformed parameters{
   
    vector[N] f;
+   vector[N] f_1;
+   vector[N] f_2;
+   vector[N] f_3;
     
    {
-    matrix[N, N] K;
-    real K_1;
+    matrix[N, N] K_1;
     matrix[N, N] K_2 = gp_periodic_cov(x, variance_k2, length_scale_k2, period_k2);
     matrix[N, N] K_3 = gp_periodic_cov(x, variance_k3, length_scale_k3, period_k3);
-    matrix[N, N] L_K;
+    matrix[N, N] L_K_1;
+    matrix[N, N] L_K_2;
+    matrix[N, N] L_K_3;
 
   // OU kernel
     for (i in 1:N) {
      for (j in i:N) {
        real d = fabs(x[i] - x[j]);
-       K_1 = square(variance_k1) * exp(-d/ length_scale_k1);
-       K[i,j] = K_1 + K_2[i,j] + K_3[i,j];
-       
-       K[j,i] = K[i,j];
+       K_1[i,j] = square(variance_k1) * exp(-d/ length_scale_k1);
+       K_1[j,i] = K_1[i,j];
      }
     }
 
     // diagonal elements
     for (n in 1:N) {
-      K[n, n] = K[n, n] + delta;
+      K_1[n, n] = K_1[n, n] + delta;
+      K_2[n, n] = K_2[n, n] + delta;
+      K_3[n, n] = K_3[n, n] + delta;
     }
 
-    L_K = cholesky_decompose(K);
-    f = L_K * eta;
+    L_K_1 = cholesky_decompose(K_1);
+    L_K_2 = cholesky_decompose(K_2);
+    L_K_3 = cholesky_decompose(K_3);
+
+    f_1 = L_K_1 * eta;
+    f_2 = L_K_2 * eta;
+    f_3 = L_K_3 * eta;
+
+    f = f_1 + f_2 + f_3;
    }
 }
 
@@ -75,4 +86,7 @@ model{
 
 generated quantities{
   vector[N] fit = intercept + f;
+  vector[N] eff_1 = f_1;
+  vector[N] eff_2 = f_2;
+  vector[N] eff_3 = f_3;
 }
