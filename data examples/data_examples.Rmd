@@ -2142,3 +2142,8 @@ eff_3_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x,
 beep()
 ```
 
+```{r}
+ggsave("final_decomposed.png", (fit_plot + eff_1_plot) / (eff_2_plot + eff_3_plot), width = 10, height = 6,
+        dpi = 180)
+```
+
