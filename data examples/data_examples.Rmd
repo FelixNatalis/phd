@@ -1937,9 +1937,9 @@ stan_data <- list(
 fit_nonsq <- stan(
   file = "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/stan/gp_eq_overall.stan",
   data = stan_data,
-  chains = 4,
-  iter = 500,
-  warmup = 200,
+  chains = 3,
+  iter = 300,
+  warmup = 100,
   seed = 123,
   control = list(adapt_delta = 0.9)
 )
@@ -1963,7 +1963,9 @@ pred <- data.frame(da_x = (daily_d$day),
                    da_y = (daily_d$irr_mean), 
                    gp = (fit_n))
 
-ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
-beep()
+p<-ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
+p
+ggsave("fiiiinal.png", p, width = 10, height = 6,
+        dpi = 180)
 ```
 
