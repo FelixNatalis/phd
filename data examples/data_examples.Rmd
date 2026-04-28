@@ -36,8 +36,8 @@ set.seed(123)
 
 
 ```{r}
-#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
-data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
+data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
+#data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
 
 names(data)[names(data)=="...1"] <- "datapoint"
 #names<- colnames(data)
