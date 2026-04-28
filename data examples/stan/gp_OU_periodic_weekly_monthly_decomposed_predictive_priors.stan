@@ -78,18 +78,18 @@ transformed parameters{
 
 model{
    // priors 
-   intercept ~ normal(0, 5);
-   length_scale_k_1 ~ inv_gamma(5, 5);
-   variance_k_1 ~ inv_gamma(5, 5);
-   length_scale_k_2 ~ inv_gamma(5, 5);
-   variance_k_2 ~ inv_gamma(5, 5);
-   length_scale_k_3 ~ inv_gamma(5, 5);
-   variance_k_3 ~ inv_gamma(5, 5);
+   intercept ~ normal(0, 2);
+   length_scale_k_1 ~ inv_gamma(1, 20);
+   variance_k_1 ~ inv_gamma(3, 4);
+   length_scale_k_2 ~ inv_gamma(5, 15);
+   variance_k_2 ~ inv_gamma(3, 2);
+   length_scale_k_3 ~ inv_gamma(3, 9);
+   variance_k_3 ~ inv_gamma(3, 2);
    sigma ~ std_normal();
    eta ~ std_normal();
 
    // model 
-   y_1 ~ normal(intercept + f, sigma);
+   y_1 ~ normal(intercept + f[1:N_1], sigma);
   
 }
 
