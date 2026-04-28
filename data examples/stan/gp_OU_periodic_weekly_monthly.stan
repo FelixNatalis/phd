@@ -7,14 +7,18 @@ data{
 
 transformed data{
    real delta = 1e-9;
-  
-  
+   real period_k2 = 7;
+   real period_k3 = 30.4;  
 }
 
 parameters{
    real intercept;
-   real<lower=0> length_scale;
-   real<lower=0> variance;
+   real<lower=0> length_scale_k1;
+   real<lower=0> variance_k1;
+   real<lower=0> length_scale_k2;
+   real<lower=0> variance_k2;
+   real<lower=0> length_scale_k3;
+   real<lower=0> variance_k3;
    real<lower=0> sigma;
    vector[N] eta;
 }
@@ -25,12 +29,18 @@ transformed parameters{
     
    {
     matrix[N, N] K;
+    real K_1;
+    matrix[N, N] K_2 = gp_periodic_cov(x, variance_k2, length_scale_k2, period_k2);
+    matrix[N, N] K_3 = gp_periodic_cov(x, variance_k3, length_scale_k3, period_k3);
     matrix[N, N] L_K;
 
   // OU kernel
     for (i in 1:N) {
      for (j in i:N) {
-       K[i,j] = square(variance) * exp(-square(d)/ square(length_scale));
+       real d = fabs(x[i] - x[j]);
+       K_1 = square(variance_k1) * exp(-d/ length_scale_k1);
+       K[i,j] = K_1 + K_2[i,j] + K_3[i,j];
+       
        K[j,i] = K[i,j];
      }
     }
@@ -48,8 +58,12 @@ transformed parameters{
 model{
    // priors 
    intercept ~ normal(0, 5);
-   length_scale ~ inv_gamma(5, 5);
-   variance ~ inv_gamma(5, 5);
+   length_scale_k1 ~ inv_gamma(5, 5);
+   variance_k1 ~ inv_gamma(5, 5);
+   length_scale_k2 ~ inv_gamma(5, 5);
+   variance_k2 ~ inv_gamma(5, 5);
+   length_scale_k3 ~ inv_gamma(5, 5);
+   variance_k3 ~ inv_gamma(5, 5);
    sigma ~ std_normal();
    eta ~ std_normal();
 
