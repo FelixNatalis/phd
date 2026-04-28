@@ -89,7 +89,7 @@ model{
    eta ~ std_normal();
 
    // model 
-   y_1 ~ normal(intercept + f, sigma);
+   y_1 ~ normal(intercept + f[1:N_1], sigma);
   
 }
 
