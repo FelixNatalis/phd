@@ -210,7 +210,7 @@ fit_final_dec_predictive <- stan(
 
 print(
   fit_final_dec_predictive,
-  pars = c("length_scale_k1","variance_k1", "length_scale_k2","variance_k2","length_scale_k3","variance_k3","sigma","intercept")
+  pars = c("length_scale_k_1","variance_k_1", "length_scale_k_2","variance_k_2","length_scale_k_3","variance_k_3","sigma","intercept")
 )
 
 save(
@@ -221,6 +221,9 @@ save(
 post_fit_final_dec_predictive <- rstan::extract(fit_final_dec_predictive)
 fit_n <- apply(post_fit_final_dec_predictive$fit, 2, mean)
 y2_n <- apply(post_fit_final_dec_predictive$y_2, 2, mean)
+eff_1 <- apply(post_fit_final_dec_predictive$eff_1, 2, mean)
+eff_2 <- apply(post_fit_final_dec_predictive$eff_2, 2, mean)
+eff_3 <- apply(post_fit_final_dec_predictive$eff_3, 2, mean)
 pred <- data.frame(da_x = append(daily_d$day, seq(239, 300, by = 1)), 
                    da_y = append(daily_d$irr_mean, rep(0, 62)), 
                    gp = append(fit_n, y2_n), 
@@ -235,6 +238,8 @@ eff_3_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x,
 p<-(fit_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
 p
 beep()
+ggsave("gp_ou_per_per_dec_predictive.png", p, width = 10, height = 6,
+        dpi = 180)
 ```
 
 
@@ -242,6 +247,9 @@ beep()
 
 
 
+```{r}
+
+```
 
 
 
