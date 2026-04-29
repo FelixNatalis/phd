@@ -26,6 +26,8 @@ x_min = -10
 x_max = 10
 n_points = 200
 epsilon = 1e-6
+n_draws = 6
+colors = c("red", "orange", "yellow", "green", "blue", "purple")
 
 #-------------------------------------------------------------------------------
 ################################################################################
@@ -77,6 +79,11 @@ ui <- page_fillable(
       "Kernel",
       card(
         "Parameters",
+        card(
+          input_switch("multiple_draws_switch", "Multiple draws mode"),
+          sliderInput("n_to_draw", "Number of Draws:", 1, n_draws, 1),
+          #         actionButton("make_draws", "Make draws")
+        ),
         card(
           card_header("Kernel", style = 'padding:4px; font-size:80%'),
           layout_columns(
@@ -224,6 +231,7 @@ server <- function(input, output) {
   steepness       <- reactiveVal(NULL)
   x_fixed         <- reactiveVal(NULL)
   y_fixed         <- reactiveVal(NULL)
+  draws           <- reactiveVal(NULL)
   
   rv <- reactiveValues(
     var = FALSE,
@@ -307,6 +315,16 @@ server <- function(input, output) {
       shinyjs::enable("draw_kernel")
     } else {
       shinyjs::disable("draw_kernel")
+    }
+  })
+  
+  shinyjs::disable("n_to_draw")
+  
+  observe({
+    if (input$multiple_draws_switch) {
+      shinyjs::enable("n_to_draw")
+    } else {
+      shinyjs::disable("n_to_draw")
     }
   })
   
@@ -495,100 +513,138 @@ server <- function(input, output) {
   
   # drawing length scale on button click
   length_scale_draw <- eventReactive(input$draw_length_scale, {
-    seed_val <- digest(
-      list(input$length_scale_alpha, input$length_scale_beta),
-      algo = "xxhash32",
-      serialize = TRUE
-    ) |>
-      substr(1, 7) |> strtoi(base = 16)
-    set.seed(seed_val)
+    if (!input$multiple_draws_switch) {
+      seed_val <- digest(
+        list(input$length_scale_alpha, input$length_scale_beta),
+        algo = "xxhash32",
+        serialize = TRUE
+      ) |>
+        substr(1, 7) |> strtoi(base = 16)
+      set.seed(seed_val)
+    }
     
+    draws <- c()
+    for (i in 1:input$n_to_draw) {
+      draw <- inverse_gamma(alpha = input$length_scale_alpha,
+                            beta = input$length_scale_beta)
+      draws <- append(draws, draw)
+    }
     rv$ls <- TRUE
-    ls <- inverse_gamma(alpha = input$length_scale_alpha,
-                        beta = input$length_scale_beta)
-    length_scale(ls)
+    length_scale(draws)
   })
   
   # drawing period on button click
   period_draw <- eventReactive(input$draw_period, {
-    seed_val <- digest(
-      list(input$period_alpha, input$period_beta),
-      algo = "xxhash32",
-      serialize = TRUE
-    ) |>
-      substr(1, 7) |> strtoi(base = 16)
-    set.seed(seed_val)
+    if (!input$multiple_draws_switch) {
+      seed_val <- digest(
+        list(input$period_alpha, input$period_beta),
+        algo = "xxhash32",
+        serialize = TRUE
+      ) |>
+        substr(1, 7) |> strtoi(base = 16)
+      set.seed(seed_val)
+    }
     
+    draws <- c()
+    for (i in 1:input$n_to_draw) {
+      draw <- inverse_gamma(alpha = input$period_alpha,
+                            beta = input$period_beta)
+      draws <- append(draws, draw)
+    }
     rv$per <- TRUE
-    per <- inverse_gamma(alpha = input$period_alpha,
-                         beta = input$period_beta)
-    period(per)
+    period(draws)
   })
   
   # drawing variance on button click
   variance_draw <- eventReactive(input$draw_variance, {
-    seed_val <- digest(
-      list(input$variance_df, input$variance_scale),
-      algo = "xxhash32",
-      serialize = TRUE
-    ) |>
-      substr(1, 7) |> strtoi(base = 16)
-    set.seed(seed_val)
+    if (!input$multiple_draws_switch) {
+      seed_val <- digest(
+        list(input$variance_df, input$variance_scale),
+        algo = "xxhash32",
+        serialize = TRUE
+      ) |>
+        substr(1, 7) |> strtoi(base = 16)
+      set.seed(seed_val)
+    }
     
+    draws <- c()
+    for (i in 1:input$n_to_draw) {
+      draw <- half_t(df = input$variance_df,
+                     scale = input$variance_scale)
+      draws <- append(draws, draw)
+    }
     rv$var <- TRUE
-    var <- half_t(df = input$variance_df,
-                  scale = input$variance_scale)
-    variance(var)
+    variance(draws)
   })
   
   #-------------------------------------------------------------------------------
   # second kernel parameters
   # drawing length scale on button click
   length_scale_2_draw <- eventReactive(input$draw_length_scale_2, {
-    seed_val <- digest(
-      list(input$length_scale_2_alpha, input$length_scale_2_beta),
-      algo = "xxhash32",
-      serialize = TRUE
-    ) |>
-      substr(1, 7) |> strtoi(base = 16)
-    set.seed(seed_val)
+    if (!input$multiple_draws_switch) {
+      seed_val <- digest(
+        list(input$length_scale_2_alpha, input$length_scale_2_beta),
+        algo = "xxhash32",
+        serialize = TRUE
+      ) |>
+        substr(1, 7) |> strtoi(base = 16)
+      set.seed(seed_val)
+    }
     
+    draws <- c()
+    for (i in 1:input$n_to_draw) {
+      draw <- inverse_gamma(
+        alpha = input$length_scale_2_alpha,
+        beta = input$length_scale_2_beta
+      )
+      draws <- append(draws, draw)
+    }
     rv$ls_2 <- TRUE
-    ls_2 <- inverse_gamma(alpha = input$length_scale_2_alpha,
-                          beta = input$length_scale_2_beta)
-    length_scale_2(ls_2)
+    length_scale_2(draws)
   })
   
   # drawing period on button click
   period_2_draw <- eventReactive(input$draw_period_2, {
-    seed_val <- digest(
-      list(input$period_2_alpha, input$period_2_beta),
-      algo = "xxhash32",
-      serialize = TRUE
-    ) |>
-      substr(1, 7) |> strtoi(base = 16)
-    set.seed(seed_val)
+    if (!input$multiple_draws_switch) {
+      seed_val <- digest(
+        list(input$period_2_alpha, input$period_2_beta),
+        algo = "xxhash32",
+        serialize = TRUE
+      ) |>
+        substr(1, 7) |> strtoi(base = 16)
+      set.seed(seed_val)
+    }
     
+    draws <- c()
+    for (i in 1:input$n_to_draw) {
+      draw <- inverse_gamma(alpha = input$period_2_alpha,
+                            beta = input$period_2_beta)
+      draws <- append(draws, draw)
+    }
     rv$per_2 <- TRUE
-    per_2 <- inverse_gamma(alpha = input$period_2_alpha,
-                           beta = input$period_2_beta)
-    period_2(per_2)
+    period_2(draws)
   })
   
   # drawing variance on button click
   variance_2_draw <- eventReactive(input$draw_variance_2, {
-    seed_val <- digest(
-      list(input$variance_2_df, input$variance_2_scale),
-      algo = "xxhash32",
-      serialize = TRUE
-    ) |>
-      substr(1, 7) |> strtoi(base = 16)
-    set.seed(seed_val)
+    if (!input$multiple_draws_switch) {
+      seed_val <- digest(
+        list(input$variance_2_df, input$variance_2_scale),
+        algo = "xxhash32",
+        serialize = TRUE
+      ) |>
+        substr(1, 7) |> strtoi(base = 16)
+      set.seed(seed_val)
+    }
     
+    draws <- c()
+    for (i in 1:input$n_to_draw) {
+      draw <- half_t(df = input$variance_2_df,
+                     scale = input$variance_2_scale)
+      draws <- append(draws, draw)
+    }
     rv$var_2 <- TRUE
-    var_2 <- half_t(df = input$variance_2_df,
-                    scale = input$variance_2_scale)
-    variance_2(var_2)
+    variance_2(draws)
   })
   #-------------------------------------------------------------------------------
   ## GP redraw logic
@@ -833,25 +889,27 @@ server <- function(input, output) {
       labs(title = title, y = y_label, x = x_label) +
       theme_minimal(base_size = 14)
     
+    # cat(paste("\n ls vals in plot \n", observation_value, "\n"))
     if (!invalid(observation_value)) {
-      plot <- plot +
-        annotate(
-          "point",
-          x = observation_value,
-          y = 0,
-          colour = "red",
-          size = 3
-        ) +
-        annotate(
-          "text",
-          x = Inf,
-          y = Inf,
-          hjust = 1.1,
-          vjust = 1.5,
-          color = "red",
-          size = 5,
-          label = paste0("draw = ", signif(observation_value, 3))
-        )
+      for (i in 1:length(observation_value)) {
+        plot <- plot +
+          annotate(
+            "point",
+            x = observation_value[i],
+            y = 0,
+            colour = colors[i],
+            size = 2.5
+          ) + annotate(
+            "text",
+            x = Inf,
+            y = Inf,
+            hjust = 1.1,
+            vjust = 1.5 + i * 1.3,
+            color = colors[i],
+            size = 5,
+            label = paste0("draw = ", signif(observation_value[i], 3))
+          )
+      }
     }
     plot
   }
@@ -859,6 +917,8 @@ server <- function(input, output) {
   # Inverse-Gamma prior for length_scale plot
   output$plot_length_scale <- renderPlot({
     observe(length_scale_draw())
+    
+    #  cat(paste("\n ls vals in this plot \n", length_scale(), "\n"))
     
     x_seq <- seq(1e-6, 15, length.out = 400)
     alpha <- input$length_scale_alpha
@@ -978,6 +1038,7 @@ server <- function(input, output) {
     )
   })
   
+  # TODO
   # Kernel based on distance plot
   output$plot_kernel <- renderPlot({
     req(input$draw_kernel)
@@ -991,51 +1052,69 @@ server <- function(input, output) {
         } else{
           kernel_label <- input$kernel_label
         }
-        
-        kernel_params <- hash(
-          "kernel_1" = hash(
-            "variance" = variance()
-            ,
-            "length_scale" = length_scale()
-            ,
-            "period" = period()
-            ,
-            "roughness" = as.numeric(input$nu)
-          ),
-          "kernel_2" = hash(
-            "variance" = variance_2()
-            ,
-            "length_scale" = length_scale_2()
-            ,
-            "period" = period_2()
-            ,
-            "roughness" = as.numeric(input$nu_2)
-          ),
-          "extra" = hash(
-            "operation" = input$operation,
-            "additional" = hash(
-              "location" = input$location,
-              "steepness" = input$steepness
-            )
-          )
-        )
-        
-        k <- kernel_wrapper(input$is_combination,
-                            kernel_label,
-                            dist,
-                            x_o,
-                            kernel_params)[, 1]
-        
         kernel_title <- paste(input$kernel_label,
                               input$operation,
                               input$kernel_label_2)
-        ggplot(data.frame(dist = dist, k = k), aes(dist, k)) +
-          geom_line(color = "purple", linewidth = 1.2) +
-          labs(
-            title = paste(kernel_title, "Kernel"),
-            x = "Distance",
-            y = "k(x)"
-          ) +
+        
+        kernel_data <- data.frame(dist = dist)
+        
+        for (i in 1:input$n_to_draw) {
+          kernel_params <- hash(
+            "kernel_1" = hash(
+              "variance" = variance()[i]
+              ,
+              "length_scale" = length_scale()[i]
+              ,
+              "period" = period()[i]
+              ,
+              "roughness" = as.numeric(input$nu)
+            ),
+            "kernel_2" = hash(
+              "variance" = variance_2()[i]
+              ,
+              "length_scale" = length_scale_2()[i]
+              ,
+              "period" = period_2()[i]
+              ,
+              "roughness" = as.numeric(input$nu_2)
+            ),
+            "extra" = hash(
+              "operation" = input$operation,
+              "additional" = hash(
+                "location" = input$location,
+                "steepness" = input$steepness
+              )
+            )
+          )
+          
+          k <- kernel_wrapper(input$is_combination,
+                              kernel_label,
+                              dist,
+                              x_o,
+                              kernel_params)[, 1]
+          
+          kernel_data[paste("k", sep = "", i)] <- k
+        }
+        
+        plot <- ggplot()
+        
+        for (i in 1:input$n_to_draw) {
+          col_name <- paste0("k", i)
+          layer_data <- data.frame(x = kernel_data$dist, y = kernel_data[[col_name]])
+          
+          plot <- plot + geom_line(
+            data = layer_data,
+            aes(x = x, y = y),
+            color = colors[i],
+            linewidth = 1.2
+          )
+        }
+        
+        plot +  labs(
+          title = paste(kernel_title, "Kernel"),
+          x = "Distance",
+          y = "k(x)"
+        ) +
           theme_minimal(base_size = 14)
       }
     }, error = function(e) {
@@ -1045,7 +1124,7 @@ server <- function(input, output) {
     })
   })
   
-  
+  # TODO
   # GP prior draws plot
   output$plot_gp <- renderPlot({
     tryCatch({

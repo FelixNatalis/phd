@@ -1765,3 +1765,58 @@ L <- chol(K)
 }
 ```
 
+```{r}
+n_to_draw = 5
+    ls_draws <- c()
+    for (i in 1: n_to_draw){
+      draw <- inverse_gamma(alpha = 1, beta = 2)
+      ls_draws <- append(ls_draws, draw)
+    }
+    ls_draws
+    #rv$ls <- TRUE
+    #length_scale(ls_draws)
+```
+
+```{r}
+dist <- seq(1, 10, by = 1)
+k1<- c(1, 2, 3, 4, 5, 4, 3, 2, 1, 0)
+k2<- c(1.5, 2.5, 3.5, 4.5, 6, 7, 8, 9, 10, 10)
+
+data <- data.frame(dist = dist)
+      plot<-   ggplot(data) 
+      
+      
+      for
+      data$k1 = k1
+      data$k2 = k2
+      
+    
+    #  plot<-
+        plot+
+          geom_line(aes_string(colnames(data)[1], colnames(data)[2]), color = "purple", linewidth = 1.2)   +    geom_line(aes_string(colnames(data)[1], colnames(data)[3]), color = "purple", linewidth = 1.2) 
+      #plot
+        
+        length(data[1])
+```
+
+```{r}
+
+ kernel_data <- data_frame(dist = dist)
+plot<- ggplot(kernel_data)
+        
+          for(i in 1:2){
+            k<- dist*i
+ kernel_data[paste("k",sep = "", i)] <- k
+# cat(paste("---\n", i, " ",colnames(kernel_data) ," ", 1+i, " ",colnames(kernel_data)[1+i],  "_____\n"))
+
+ 
+            plot <- plot + geom_line( aes_string(colnames(kernel_data)[1], colnames(kernel_data)[1+i]), color = "purple", linewidth = 1.2)
+          }
+
+                                    
+
+plot
+
+
+```
+
