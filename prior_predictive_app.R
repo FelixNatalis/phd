@@ -663,6 +663,7 @@ server <- function(input, output) {
         loc <- location()
         ste <- steepness()
         ope <- operation()
+        multi      <- isTRUE(input$multiple_draws_switch)
         old_params <- last_params()
         old_pool   <- last_pool()
         #TODO add bound parameters
@@ -694,7 +695,7 @@ server <- function(input, output) {
         } else{
           kernel_label <- input$kernel_label
         }
-        
+        if (!multi) {      
         kernel_params <- hash(
           "kernel_1" = hash(
             "variance" = var
@@ -733,7 +734,55 @@ server <- function(input, output) {
           )
         )
         
-        new_pool <- list(x_orig = x_orig, funcs = funcs)
+        new_pool <- list(mode   = "single",x_orig = x_orig, funcs = funcs)
+        } else {      
+          n_draw <- input$n_to_draw   
+          
+          funcs <- vapply(seq_len(n_draw), function(i) {
+            kernel_params_i <- hash(
+              "kernel_1" = hash(
+                "variance" = var[i]
+                ,
+                "length_scale" = len[i]
+                ,
+                "period" = per[i]
+                ,
+                "roughness" = ro
+              ),
+              "kernel_2" = hash(
+                "variance" = var_2[i]
+                ,
+                "length_scale" = len_2[i]
+                ,
+                "period" = per_2[i]
+                ,
+                "roughness" = ro_2
+              ),
+              "extra" = hash(
+                "operation" = input$operation,
+                "additional" = hash(
+                  "location" = input$location,
+                  "steepness" = input$steepness
+                )
+              )
+            )
+            
+            simulate_gp(
+              x_orig,
+              input$is_combination,
+              kernel_label,
+              kernel_params_i
+            )
+          }, numeric(length(x_orig)))
+          # result is still an n_points × n_draw matrix, one column per param set
+          
+          new_pool <- list(
+            mode   = "multi",
+            x_orig = x_orig,
+            funcs  = funcs          # matrix: n_points × n_draw
+          )
+          
+        }
         
         last_params(
           list(
@@ -741,16 +790,15 @@ server <- function(input, output) {
             length_scale = len,
             variance = var,
             period = per,
-            roughness = ro
-            ,
+            roughness = ro ,
             length_scale_2 = len_2,
             variance_2 = var_2,
             period_2 = per_2,
-            roughness_2 = ro_2
-            ,
+            roughness_2 = ro_2,
             location = loc,
             steepness = ste,
-            operation = ope
+            operation = ope,
+            multi        = multi
           )
         )
         last_pool(new_pool)
@@ -847,26 +895,50 @@ server <- function(input, output) {
   gp_data <- reactive({
     idx <- 1:input$nfunc
     idx <- idx[idx <= 100]
+    req(gp_pool())
+    pool  <- gp_pool()
+    multi <- isTRUE(input$multiple_draws_switch)
     
     if (!constrained_check()) {
-      req(gp_pool())
+
       x_new <- seq(input$x_range[1], input$x_range[2], length.out = input$n_points)
       
+      if(!multi){
       funcs_interp <- apply(gp_pool()$funcs[, idx, drop = FALSE], 2, function(f) {
         approx(gp_pool()$x_orig, f, xout = x_new)$y
       })
+      data <- data.frame(
+        x = rep(x_new, length(idx)),
+        f = as.vector(funcs_interp),
+        func = rep(idx, each = length(x_new))
+      )
+      }else{
+        n_draw <- ncol(pool$funcs)
+        
+        funcs_interp <- apply(pool$funcs, 2, function(f) {
+          approx(pool$x_orig, f, xout = x_new)$y
+        })
+        
+        data<- data.frame(
+          x    = rep(x_new, n_draw),
+          f    = as.vector(funcs_interp),
+          func = rep(seq_len(n_draw), each = length(x_new))
+        )
+      }
     }
     else{
       x_new <- seq(0, 1, 0.1)
       funcs_interp <- gp_pool()
       # cat(paste("\n\n","funcs_interp in gp data", funcs_interp, "\n\n"))
-    }
     
-    data <- data.frame(
-      x = rep(x_new, length(idx)),
-      f = as.vector(funcs_interp),
-      func = rep(idx, each = length(x_new))
-    )
+      data <- data.frame(
+        x = rep(x_new, length(idx)),
+        f = as.vector(funcs_interp),
+        func = rep(idx, each = length(x_new))
+      )
+      }
+    
+
     
     #  cat(paste("\n\n","data", data, "\n\n"))
     data
