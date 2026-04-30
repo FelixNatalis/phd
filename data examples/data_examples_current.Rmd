@@ -463,9 +463,9 @@ eff_1_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x,
 eff_2_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_2), color = "red")
 eff_3_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_3), color = "red")
 eff_4_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_4), color = "red")
-p<-(fit_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
+p<-(fit_plot ) / (eff_4_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
 p
-ggsave("gp_eq_ou_per_per_dec_predictive_priors.png", p, width = 10, height = 6,dpi = 180)
+ggsave("gp_eq_ou_per_per_dec_predictive_priors.png", p, width = 10, height = 15,dpi = 180)
 ```
 
 
