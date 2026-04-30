@@ -328,6 +328,15 @@ server <- function(input, output) {
     }
   })
   
+  observe({
+    if (!input$multiple_draws_switch) {
+      shinyjs::enable("nfunc")
+    } else {
+      shinyjs::disable("nfunc")
+    }
+  })
+  
+  
   output$dynamic_length_scale_choice <- renderUI({
     if (!invalid(input$kernel_label) &&
         (input$kernel_label != "Linear")) {
@@ -779,7 +788,7 @@ server <- function(input, output) {
           new_pool <- list(
             mode   = "multi",
             x_orig = x_orig,
-            funcs  = funcs          # matrix: n_points × n_draw
+            funcs  = funcs         
           )
           
         }
