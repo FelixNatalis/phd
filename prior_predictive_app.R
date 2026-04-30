@@ -695,48 +695,50 @@ server <- function(input, output) {
         } else{
           kernel_label <- input$kernel_label
         }
-        if (!multi) {      
-        kernel_params <- hash(
-          "kernel_1" = hash(
-            "variance" = var
-            ,
-            "length_scale" = len
-            ,
-            "period" = per
-            ,
-            "roughness" = ro
-          ),
-          "kernel_2" = hash(
-            "variance" = var_2
-            ,
-            "length_scale" = len_2
-            ,
-            "period" = per_2
-            ,
-            "roughness" = ro_2
-          ),
-          "extra" = hash(
-            "operation" = input$operation,
-            "additional" = hash(
-              "location" = input$location,
-              "steepness" = input$steepness
+        if (!multi) {
+          kernel_params <- hash(
+            "kernel_1" = hash(
+              "variance" = var
+              ,
+              "length_scale" = len
+              ,
+              "period" = per
+              ,
+              "roughness" = ro
+            ),
+            "kernel_2" = hash(
+              "variance" = var_2
+              ,
+              "length_scale" = len_2
+              ,
+              "period" = per_2
+              ,
+              "roughness" = ro_2
+            ),
+            "extra" = hash(
+              "operation" = input$operation,
+              "additional" = hash(
+                "location" = input$location,
+                "steepness" = input$steepness
+              )
             )
           )
-        )
-        
-        funcs <- replicate(
-          n_functions,
-          simulate_gp(
-            x_orig,
-            input$is_combination,
-            kernel_label,
-            kernel_params
+          
+          funcs <- replicate(
+            n_functions,
+            simulate_gp(
+              x_orig,
+              input$is_combination,
+              kernel_label,
+              kernel_params
+            )
           )
-        )
-        
-        new_pool <- list(mode   = "single",x_orig = x_orig, funcs = funcs)
-        } else {      
-          n_draw <- input$n_to_draw   
+          
+          new_pool <- list(mode   = "single",
+                           x_orig = x_orig,
+                           funcs = funcs)
+        } else {
+          n_draw <- input$n_to_draw
           
           funcs <- vapply(seq_len(n_draw), function(i) {
             kernel_params_i <- hash(
@@ -767,12 +769,10 @@ server <- function(input, output) {
               )
             )
             
-            simulate_gp(
-              x_orig,
-              input$is_combination,
-              kernel_label,
-              kernel_params_i
-            )
+            simulate_gp(x_orig,
+                        input$is_combination,
+                        kernel_label,
+                        kernel_params_i)
           }, numeric(length(x_orig)))
           # result is still an n_points × n_draw matrix, one column per param set
           
@@ -893,54 +893,40 @@ server <- function(input, output) {
   
   # For storing and reproducing draws that were already computed
   gp_data <- reactive({
-    idx <- 1:input$nfunc
-    idx <- idx[idx <= 100]
+   
     req(gp_pool())
     pool  <- gp_pool()
-    multi <- isTRUE(input$multiple_draws_switch)
+    
+    if(input$multiple_draws_switch){
+      func_sequence <- seq_len(input$n_to_draw)
+    }else{
+      func_sequence <-seq_len(input$nfunc)
+    }
     
     if (!constrained_check()) {
-
       x_new <- seq(input$x_range[1], input$x_range[2], length.out = input$n_points)
       
-      if(!multi){
-      funcs_interp <- apply(gp_pool()$funcs[, idx, drop = FALSE], 2, function(f) {
-        approx(gp_pool()$x_orig, f, xout = x_new)$y
-      })
-      data <- data.frame(
-        x = rep(x_new, length(idx)),
-        f = as.vector(funcs_interp),
-        func = rep(idx, each = length(x_new))
-      )
-      }else{
-        n_draw <- ncol(pool$funcs)
-        
-        funcs_interp <- apply(pool$funcs, 2, function(f) {
-          approx(pool$x_orig, f, xout = x_new)$y
+      if (!input$multiple_draws_switch) {
+        funcs_interp <- apply(gp_pool()$funcs[, func_sequence, drop = FALSE], 2, function(f) {
+          approx(gp_pool()$x_orig, f, xout = x_new)$y
         })
-        
-        data<- data.frame(
-          x    = rep(x_new, n_draw),
-          f    = as.vector(funcs_interp),
-          func = rep(seq_len(n_draw), each = length(x_new))
-        )
+      } else{
+        funcs_interp <- apply(gp_pool()$funcs, 2, function(f) {
+          approx(gp_pool()$x_orig, f, xout = x_new)$y
+        })
       }
     }
     else{
       x_new <- seq(0, 1, 0.1)
       funcs_interp <- gp_pool()
-      # cat(paste("\n\n","funcs_interp in gp data", funcs_interp, "\n\n"))
+    }
     
-      data <- data.frame(
-        x = rep(x_new, length(idx)),
-        f = as.vector(funcs_interp),
-        func = rep(idx, each = length(x_new))
-      )
-      }
+    data <- data.frame(
+      x = rep(x_new, length(func_sequence)),
+      f = as.vector(funcs_interp),
+      func = rep(func_sequence, each = length(x_new))
+    )
     
-
-    
-    #  cat(paste("\n\n","data", data, "\n\n"))
     data
   })
   
@@ -1280,8 +1266,10 @@ server <- function(input, output) {
             subtitle = paste(kernel_title, "Kernel"),
             color = "Function"
           ) +
+          scale_color_manual(values = setNames(colors, levels(factor(
+            gp_data()$func
+          )))) +
           # Manual legend entries for ribbon + dashed line + points
-          scale_color_discrete() +
           guides(color = "none") +          # drop per-function color legend if not needed
           annotate(
             "rect",
