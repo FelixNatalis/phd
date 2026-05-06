@@ -4,4 +4,6 @@
 */output/*
 *.png
 *.jpg
+*.csv
 *.html
+*.rds

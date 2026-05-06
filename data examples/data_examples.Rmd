@@ -11,13 +11,14 @@ library(stringr)
 library(ggplot2)
 library(reshape2)
 library(tidyr)
-
+install.packages("beepr")     # Install beepr package
+library(beepr)                # Load beepr package
 require("lgpr")
 require("rstan")
 require("ggplot2")
 
 #install.packages('GauPro')
-library(GauPro)
+#library(GauPro)
 required <- c("tidyverse", "lubridate", "scales", "patchwork", "viridis")
 new      <- required[!required %in% installed.packages()[, "Package"]]
 if (length(new)) install.packages(new, repos = "https://cloud.r-project.org")
@@ -57,7 +58,7 @@ df <- data %>%
  
     # --- derived time components ---
     datetime = as.POSIXct(as.character(paste(date_parsed, beeptime)), format="%Y-%m-%d %H:%M:%S"),
-    timestamp = as.numeric(datetime),
+    timestamp = as.numeric(datetime),# the number of seconds that have passed between date object and 1/1/1970
     year      = year(date_parsed),
     month_num = month(date_parsed),
     date_num = day(date_parsed),
@@ -79,26 +80,30 @@ daily <- df %>%
     tired_sd   = sd(tired),
     irr_mean = mean(irritated),
     irr_sd = sd(irritated),
+   
+
     n_beeps   = n(),
     .groups   = "drop"
   )
 
 daily <- daily %>% mutate(
   timestamp = as.numeric(date_parsed),
+  day = row_number(),
+  day_of_year = as.numeric(strftime(date_parsed, format = "%j")),
+  day_of_month = day(date_parsed)
 )
  
-# one row per ISO week
-weekly <- df %>%
+df_dep<- df %>% 
+  filter(!is.na(dep))
+
+# weekly depression scores
+weekly <- df_dep %>%
   group_by(year, week) %>%
   summarise(
-    tired_mean  = mean(tired),
-    irr_mean = mean(irritated),
-    irr_sd = sd(irritated),
-    n          = n(),
-    week_start = min(date_parsed),
+    dep_mean  = mean(dep),
     .groups    = "drop"
   )
- 
+
 # one row per calendar month
 monthly <- df %>%
   group_by(year, month_num, month) %>%
@@ -149,6 +154,12 @@ mday_agg <- df %>%
   ) %>%
   arrange(date_num)
  
+weekly_d <- ggplot(weekly, aes(seq(1, 28, by = 1), dep_mean)) +
+  geom_point() +  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  )
+
 ```
 #------ plots
 ```{r}
@@ -869,7 +880,8 @@ plot(f9)
 f9$plotkernel()
 ```
 
-# - ----- what the hell is up with these kernels
+# ---- what the hell is up with these kernels
+
 ```{r}
 x<- c(1,  11, 15, 50)
 y <- c(1,3, 2, 1)
@@ -932,4 +944,1208 @@ plot_components(fit,
 
 #___________________________________________________STAN_____________________________________________________________________________________
 
+```{r}
+# install.packages("tictoc")
+# install.packages("cmdstanr")
+# install.packages("tinytable")
+# install.packages("rprojroot")
+library(rprojroot)
+root <- has_file(".Bayesian-Workflow-root")$make_fix_file()
+library(tidyverse)
+library(tictoc)
+mytoc <- \() {
+  toc(func.toc = \(tic, toc, msg) {
+    sprintf("%s took %s sec", msg, as.character(signif(toc - tic, 2)))
+  })}
+library(cmdstanr)
+# CmdStanR output directory makes Quarto cache to work
+dir.create(root("stan", "stan_output"), showWarnings = FALSE)
+options(cmdstanr_output_dir = root("stan", "stan_output"))
+library(posterior)
+options(pillar.neg = FALSE,
+        pillar.subtle = FALSE,
+        pillar.sigfig = 2)
+library(tinytable)
+options(tinytable_format_num_fmt = "significant_cell",
+        tinytable_format_digits = 2,
+        tinytable_tt_digits = 2)
+library(loo)
+library(bayesplot)
+theme_set(bayesplot::theme_default(base_family = "sans"))
+library(ggdist)
+library(patchwork)
+library(ggrepel)
+library(RColorBrewer)
+set1 <- brewer.pal(7, "Set1")
+Sys.setlocale("LC_TIME", "en_GB.utf8")
+source(root("stan", "plot_helpers.R"))
+```
+
+```{r}
+irr_g_mean <- mean(df_shorter$mood_irritat)
+ti_g_mean <- mean(df_shorter$phy_tired)
+
+irr<-ggplot(df_shorter, aes(timestamp, mood_irritat)) +
+  geom_point()+#aes(color = tired_mean, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = irr_g_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+ # mood_gradient +
+  scale_y_continuous(limits = c(1, 7), breaks = 1:7) +
+    #scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+  #scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood irritation (1–7)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+ti<-ggplot(df_shorter, aes(timestamp, phy_tired)) +
+  geom_point()+#aes(color = tired_mean, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = ti_g_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+ # mood_gradient +
+  scale_y_continuous(limits = c(1, 7), breaks = 1:7) +
+    #scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+  #scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood tiredness (1–7)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+irr
+ti
+
+ggsave("irr_all_weeks.png", irr, width = 10, height = 6,
+        dpi = 180)
+ggsave("ti_all_weeks.png", ti, width = 10, height = 6,
+        dpi = 180)
+```
+```{r}
+irr<- ggplot(daily, aes(timestamp, irr_mean)) +
+  geom_point(aes(color = wday_num, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = irr_g_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+ # mood_gradient +
+  scale_y_continuous(limits = c(1, 7), breaks = 1:7) +
+    scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "Daily mean · LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood irritation (1–7)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+ti<- ggplot(daily, aes(timestamp, tired_mean)) +
+  geom_point(aes(color = wday_num, size = n_beeps)) +
+  geom_smooth(
+    method = "loess", span = .1, se = TRUE,
+    color = clr_line, fill = clr_line, alpha = .15, linewidth = .9
+  ) +
+  geom_hline(
+    yintercept = ti_g_mean,
+    linetype = "dashed", color = clr_accent, linewidth = .5
+  ) +
+ # mood_gradient +
+  scale_y_continuous(limits = c(1, 7), breaks = 1:7) +
+    scale_size_continuous(range = c(.5, 2.5), name = "N beeps") +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b '%y") +
+  labs(
+    title    = "Overall Mood Trajectory",
+    subtitle = "Daily mean · LOESS smooth (span = 0.10) · dashed = grand mean",
+    x = NULL, y = "Mood tiredness (1–7)"
+  ) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+irr
+ti
+ggsave("irr_daily_weeks.png", irr, width = 10, height = 6,
+        dpi = 180)
+ggsave("ti_daily_weeks.png", ti, width = 10, height = 6,
+        dpi = 180)
+```
+# __ model 1 smooth overall
+```{r}
+model1 <- cmdstan_model(stan_file = root("stan", "gpbf1.stan"),
+                        include_paths = root("stan"))
+```
+```{r}
+standata1 <- list(x = daily$day,
+                  y = log(daily$tired_mean),
+                  N = length(daily$day),
+                  c_f1 = 1.5,
+                  M_f1 = 20)
+```
+
+```{r}
+tic('Finding MAP for model 1 with optimization')
+opt1 <- model1$optimize(data = standata1, init = 0, algorithm = "bfgs",
+                        jacobian = TRUE)
+```
+```{r}
+mytoc()
+```
+
+```{r}
+odraws1 <- opt1$draws()
+subset(odraws1, variable = c("intercept", "sigma_f1", "lengthscale_f1", "sigma")) |>
+  as.data.frame() |>
+  tt()
+```
+
+```{r}
+oEf <- exp(as.numeric(subset(odraws1, variable = "f")))
+make_pf(daily, oEf)
+```
+# __ model 2 with monthly periodic
+```{r}
+model2 <- cmdstan_model(stan_file = root("stan", "gpbf2.stan"),
+                        include_paths = root("stan"))
+```
+
+```{r}
+standata2 <- list(x = daily$day,
+                  y = log(daily$tired_mean),
+                  N = length(daily$day),
+                  c_f1 = 1.5,
+                  M_f1 = 20,
+                  J_f2 = 20)
+tic('Sampling from Pathfinder approximation of model 2 posterior')
+pth2 <- model2$pathfinder(data = standata2, init = 0.1,
+                          num_paths = 10, single_path_draws = 40, draws = 400,
+                          history_size = 50, max_lbfgs_iters = 100,
+                          refresh = 0)
+
+mytoc()
+
+pdraws2 <- pth2$draws()
+summarise_draws(subset(pdraws2, variable = c("lp__")), n_distinct) |>
+  tt()
+
+summarise_draws(subset(pdraws2, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE),
+                default_summary_measures()) |>
+  tt()
+```
+
+```{r}
+draws2 <- as_draws_matrix(pdraws2)
+Ef <- exp(apply(subset(draws2, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws2, variable = "f1"), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(daily$tired_mean)))
+Ef2 <- apply(subset(draws2, variable = "f2"), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(daily$tired_mean)))
+pf  <- make_pf(daily, Ef) 
+pf1 <- make_pf1(daily, Ef1)
+pf2 <- make_pf2(daily, Ef2)
+compose_3panel(pf, pf1, pf2)
+```
+# __ model 3 with day of week effect
+
+```{r}
+model3 <- cmdstan_model(stan_file = root("stan", "gpbf3.stan"),
+                        include_paths = root("stan"))
+
+standata3 <- list(x = daily$day,
+                  y = log(daily$tired_mean),
+                  N = length(daily$day),
+                  c_f1 = 1.5, # factor c of basis functions for GP for f1
+                  M_f1 = 20,  # number of basis functions for GP for f1
+                  J_f2 = 20,  # number of basis functions for periodic f2
+                  day_of_week = daily$wday_num)
+
+tic('Sampling from Pathfinder approximation of model 3 posterior')
+pth3 <- model3$pathfinder(data = standata3, init = 0.1,
+                          num_paths = 10, single_path_draws = 40, draws = 400,
+                          history_size = 50, max_lbfgs_iters = 100, 
+                          refresh = 0)
+
+pdraws3 <- pth3$draws()
+summarise_draws(subset(pdraws3, variable = c("lp__")), n_distinct) |>
+  tt()
+
+summarise_draws(subset(pdraws3, variable = c("sigma_", "lengthscale_", "sigma", "beta_f3"), regex = TRUE),
+                default_summary_measures()) |>
+  tt()
+
+draws3 <- as_draws_matrix(pdraws3)
+Ef <- exp(apply(subset(draws3, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3, variable = "f1"), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(daily$tired_mean)))
+Ef2 <- apply(subset(draws3, variable = "f2"), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(daily$tired_mean)))
+Ef_day_of_week <- apply(subset(draws3, variable = "f_day_of_week"), 2, median)
+Ef_day_of_week <- exp(Ef_day_of_week - mean(Ef_day_of_week) + mean(log(daily$tired_mean)))
+pf  <- make_pf(daily, Ef)
+pf1 <- make_pf1(daily, Ef1)
+pf2 <- make_pf2(daily, Ef2)
+pf3 <- make_pf3(daily, Ef_day_of_week)
+compose_4panel(pf, pf1, pf2, pf3)
+```
+# __ model 4 with varying weekday effect
+```{r}
+model4 <- cmdstan_model(stan_file = root("stan", "gpbf4.stan"),
+                        include_paths = root("stan"))
+
+standata4 <- list(x = daily$day,
+                  y = log(daily$tired_mean),
+                  N = length(daily$day),
+                  c_f1 = 1.5, # factor c of basis functions for GP for f1
+                  M_f1 = 20,  # number of basis functions for GP for f1
+                  J_f2 = 20,  # number of basis functions for periodic f2
+                  c_g3 = 1.5, # factor c of basis functions for GP for g3
+                  M_g3 = 5,   # number of basis functions for GP for g3
+                  day_of_week = daily$wday_num,
+                  day_of_year = daily$day_of_year) 
+
+tic('Sampling from Pathfinder approximation of model 4 posterior')
+pth4 <- model4$pathfinder(data = standata4, init = 0.1,
+                          num_paths = 10, single_path_draws = 40, draws = 400,
+                          history_size = 50, max_lbfgs_iters = 100,
+                          refresh = 0)
+
+pdraws4 <- pth4$draws()
+summarise_draws(subset(pdraws4, variable = c("lp__")), n_distinct) |>
+  tt()
+
+summarise_draws(subset(pdraws4, variable = c("sigma_", "lengthscale_", "sigma", "beta_f3"), regex = TRUE),
+                default_summary_measures()) |>
+  tt()
+
+draws4 <- as_draws_matrix(pdraws4)
+Ef <- exp(apply(subset(draws4, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws4, variable = "f1"), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(daily$tired_mean)))
+Ef2 <- apply(subset(draws4, variable = "f2"), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(daily$tired_mean)))
+Ef_day_of_week <- apply(subset(draws4, variable = "f_day_of_week"), 2, median)
+Ef_day_of_week <- exp(Ef_day_of_week - mean(Ef_day_of_week) + mean(log(daily$tired_mean)))
+Ef3 <- apply(subset(draws4, variable = "f3"), 2, median)
+Ef3 <- exp(Ef3 - mean(Ef3) + mean(log(daily$tired_mean)))
+pf   <- make_pf(daily, Ef)
+pf1  <- make_pf1(daily, Ef1)
+pf2  <- make_pf2(daily, Ef2)
+pf3b <- make_pf3b(daily, Ef3)
+compose_4panel(pf, pf1, pf2, pf3b)
+```
+
+```{r}
+tic('MCMC sampling from model 4 posterior with Pathfinder initialization')
+fit4 <- model4$sample(data = standata4, iter_warmup = 100, iter_sampling = 100,
+                      chains = 4, parallel_chains = 4,
+                      init = pth4)
+
+mytoc()
+
+draws4 <- fit4$draws()
+summarise_draws(subset(draws4, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE)) |>
+  tt()
+
+summarise_draws(subset(draws4, variable = c("beta_f3"))) |>
+  tt()
+
+draws4 <- as_draws_matrix(draws4)
+Ef <- exp(apply(subset(draws4, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws4, variable = "f1"), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(daily$tired_mean)))
+Ef2 <- apply(subset(draws4, variable = "f2"), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(daily$tired_mean)))
+Ef_day_of_week <- apply(subset(draws4, variable = "f_day_of_week"), 2, median)
+Ef_day_of_week <- exp(Ef_day_of_week - mean(Ef_day_of_week) + mean(log(daily$tired_mean)))
+Ef3 <- apply(subset(draws4, variable = "f3"), 2, median)
+Ef3 <- exp(Ef3 - mean(Ef3) + mean(log(daily$tired_mean)))
+pf   <- make_pf(daily, Ef) 
+pf1  <- make_pf1(daily, Ef1)
+pf2  <- make_pf2(daily, Ef2, date_breaks = "2 month")
+pf3b <- make_pf3b(daily, Ef3 , weekday_labels = TRUE)
+p<- compose_4panel(pf, pf1, pf2, pf3b)
+
+ggplot(daily[i1,])+ geom_point(aes(day[i1], "y" = Ef3[i1], color = "red")) + geom_point(aes(x = day[i1+1], y = Ef3[i1+1], color = "orange")) + geom_point(aes(x = day[i1+2], y = Ef3[i1+2], color = "yellow")) + geom_point(aes(x = day[i1+3], y = Ef3[i1+3], colour = "green"))+ geom_point(aes(x = day[i1+4], y = Ef3[i1+4], colour = "blue"))+ geom_point(aes(x = day[i1+5], y = Ef3[i1+5], colour = "purple"))+ geom_point(aes(x = day[i1+6], y = Ef3[i1+6], colour = "black"))
+
+ggsave("stan_fit_4.png", p, width = 10, height = 6,dpi = 180)
+```
+
+```{r}
+daily$Ef3 <- round(Ef3, 2)
+
+mondays <- daily[daily$wday == "Mon","Ef3"]
+nrow(distinct(mondays))
+tu <- daily[daily$wday == "Tue","Ef3"]
+nrow(distinct(tu))
+wed <- daily[daily$wday == "Wed","Ef3"]
+nrow(distinct(wed))
+thu <- daily[daily$wday == "Thu","Ef3"]
+nrow(distinct(thu))
+fri <- daily[daily$wday == "Fri","Ef3"]
+nrow(distinct(fri))
+sat <- daily[daily$wday == "Sat","Ef3"]
+nrow(distinct(sat))
+sun <- daily[daily$wday == "Sun","Ef3"]
+nrow(distinct(sun))
+plot(daily$wday, daily$Ef3)
+plot(daily$wday, daily$tired_mean)
+```
+```
+f_day_of_week[1] f_day_of_week[2] f_day_of_week[3] f_day_of_week[4] f_day_of_week[5] 
+  mon   1.892175   tue 1.885922     wed 1.888777     thu 1.894157    fri  1.955837 
+f_day_of_week[6] f_day_of_week[7] 
+  sat   1.940643   sun   1.878867 
+```
+# model 3 is better, keeping it
+```{r}
+tic('MCMC sampling from model 3 posterior with Pathfinder initialization')
+fit3 <- model3$sample(data = standata3, iter_warmup = 100, iter_sampling = 100,
+                      chains = 4, parallel_chains = 4,
+                      init = pth3)
+```
+
+```{r}
+draws3 <- fit3$draws()
+summarise_draws(subset(draws3, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE)) |>
+  tt()
+
+summarise_draws(subset(draws3, variable = c("beta_f3"))) |>
+  tt()
+
+draws3 <- as_draws_matrix(draws3)
+Ef <- exp(apply(subset(draws3, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3, variable = "f1"), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(daily$tired_mean)))
+Ef2 <- apply(subset(draws3, variable = "f2"), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(daily$tired_mean)))
+Ef_day_of_week <- apply(subset(draws3, variable = "f_day_of_week"), 2, median)
+Ef_day_of_week <- exp(Ef_day_of_week - mean(Ef_day_of_week) + mean(log(daily$tired_mean)))
+pf  <- make_pf(daily, Ef)
+pf1 <- make_pf1(daily, Ef1)
+pf2 <- make_pf2(daily, Ef2, date_breaks = "2 month")
+pf3 <- make_pf3(daily, Ef_day_of_week)
+compose_4panel(pf, pf1, pf2, pf3)
+```
+
+
+# comparison, sometime later
+```{r}
+loo1 <- fit1$loo()
+loo2 <- fit2$loo()
+loo3 <- fit3$loo()
+loo4 <- fit4$loo()
+loo6 <- fit6$loo()
+loo7 <- fit7$loo()
+loo_compare(list(`Model 1` = loo1, `Model 2` = loo2, `Model 3` = loo3, `Model 4` = loo4, `Model 6` = loo6, `Model 7` = loo7, `Model 8 + RHS` = loo8rhs)) |>
+  as.data.frame() |>
+  rownames_to_column("model") |>
+  select(model, elpd_diff, se_diff) |>
+  tt()
+
+
+draws8 <- as_draws_matrix(draws8tnu)
+f <- exp(subset(draws8, variable = "f"))
+loo8tnu <- fit8tnu$loo(save_psis = TRUE)
+Efloo <- E_loo(f, psis_object = loo8tnu$psis_object)$value
+LOOR2 <- 1 - var(log(birthdays$births_relative100 / Efloo)) / var(log(birthdays$births_relative100))
+data.frame(Model = "Model 8 Student's t", `LOO-R2` = LOOR2) |>
+  tt()
+```
+# __ model 3_5 with day of week effect via a periodic
+
+```{r}
+model3_5 <- cmdstan_model(stan_file = root("stan", "gpbf3_5.stan"),include_paths = root("stan"))
+
+standata3_5 <- list(x = daily$day,
+                  y = log(daily$tired_mean),
+                  N = length(daily$day),
+                  c_f1 = 1.5, # factor c of basis functions for GP for f1
+                  M_f1 = 20,  # number of basis functions for GP for f1
+                  J_f2 = 20,  # number of basis functions for periodic f2
+                  J_f3 = 20)
+
+tic('Sampling from Pathfinder approximation of model 3 posterior')
+pth3_5 <- model3_5$pathfinder(data = standata3_5, init = 0.1,
+                          num_paths = 10, single_path_draws = 40, draws = 400,
+                          history_size = 50, max_lbfgs_iters = 100, 
+                          refresh = 0, psis_resample=FALSE)
+
+pdraws3_5 <- pth3_5$draws()
+summarise_draws(subset(pdraws3_5, variable = c("lp__")), n_distinct) |>
+  tt()
+
+summarise_draws(subset(pdraws3_5, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE),
+                default_summary_measures()) |>
+  tt()
+
+draws3_5 <- as_draws_matrix(pdraws3_5)
+Ef <- exp(apply(subset(draws3_5, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3_5, variable = "f1"), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(daily$tired_mean)))
+Ef2 <- apply(subset(draws3_5, variable = "f2"), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(daily$tired_mean)))
+Ef3 <- apply(subset(draws3_5, variable = "f3"), 2, median)
+Ef3 <- exp(Ef3 - mean(Ef3) + mean(log(daily$tired_mean)))
+#Ef_day_of_week <- apply(subset(draws3_5, variable = "f_day_of_week"), 2, median)
+#Ef_day_of_week <- exp(Ef_day_of_week - mean(Ef_day_of_week) + mean(log(daily$tired_mean)))
+pf  <- make_pf(daily, Ef)
+pf1 <- make_pf1(daily, Ef1)
+pf2 <- make_pf2(daily, Ef2)
+pf3 <- make_pf3(daily, Ef3)
+compose_4panel(pf, pf1, pf2, pf3)
+```
+
+```{r}
+tic('MCMC sampling from model 3_5 posterior with Pathfinder initialization')
+fit3 <- model3_5$sample(data = standata3_5, iter_warmup = 100, iter_sampling = 100, chains = 4, parallel_chains = 4,  init = pth3_5)
+draws3_5 <- fit3$draws()
+summarise_draws(subset(draws3_5, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE)) |>
+  tt()
+
+draws3_5 <- as_draws_matrix(draws3_5)
+Ef <- exp(apply(subset(draws3_5, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3_5, variable = "f1"), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(daily$tired_mean)))
+Ef2 <- apply(subset(draws3_5, variable = "f2"), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(daily$tired_mean)))
+Ef3 <- apply(subset(draws3_5, variable = "f3"), 2, median)
+Ef3 <- exp(Ef3 - mean(Ef3) + mean(log(daily$tired_mean)))
+pf  <- make_pf(daily, Ef)
+pf1 <- make_pf1(daily, Ef1)
+pf2 <- make_pf2(daily, Ef2, date_breaks = "2 month")
+pf3 <- make_pf3(daily, Ef3)
+compose_4panel(pf, pf1, pf2, pf3)
+```
+
+```{r}
+ggsave("stan_final.png", compose_4panel(pf, pf1, pf2, pf3), width = 10, height = 6,
+        dpi = 180)
+save(fit3, file = "fit3_5.RData")
+```
+# model 3_5 with irritation instead
+```{r}
+model3_5 <- cmdstan_model(stan_file = root("stan", "gpbf3_5.stan"),include_paths = root("stan"))
+
+standata3_5 <- list(x = daily$day,
+                  y = log(daily$irr_mean),
+                  N = length(daily$day),
+                  c_f1 = 1.5, # factor c of basis functions for GP for f1
+                  M_f1 = 20,  # number of basis functions for GP for f1
+                  J_f2 = 20,  # number of basis functions for periodic f2
+                  J_f3 = 20)
+
+tic('Sampling from Pathfinder approximation of model 3 posterior')
+pth3_5 <- model3_5$pathfinder(data = standata3_5, init = 0.1,
+                          num_paths = 10, single_path_draws = 40, draws = 400,
+                          history_size = 50, max_lbfgs_iters = 100, 
+                          refresh = 0, psis_resample=FALSE)
+
+pdraws3_5 <- pth3_5$draws()
+summarise_draws(subset(pdraws3_5, variable = c("lp__")), n_distinct) |>
+  tt()
+
+summarise_draws(subset(pdraws3_5, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE),
+                default_summary_measures()) |>
+  tt()
+
+draws3_5 <- as_draws_matrix(pdraws3_5)
+Ef <- exp(apply(subset(draws3_5, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3_5, variable = "f1"), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(daily$irr_mean)))
+Ef2 <- apply(subset(draws3_5, variable = "f2"), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(daily$irr_mean)))
+Ef3 <- apply(subset(draws3_5, variable = "f3"), 2, median)
+Ef3 <- exp(Ef3 - mean(Ef3) + mean(log(daily$irr_mean)))
+#Ef_day_of_week <- apply(subset(draws3_5, variable = "f_day_of_week"), 2, median)
+#Ef_day_of_week <- exp(Ef_day_of_week - mean(Ef_day_of_week) + mean(log(daily$irr_mean)))
+pf  <- make_pf(daily, Ef)
+pf1 <- make_pf1(daily, Ef1)
+pf2 <- make_pf2(daily, Ef2)
+pf3 <- make_pf3(daily, Ef3)
+compose_4panel(pf, pf1, pf2, pf3)
+```
+```{r}
+tic('MCMC sampling from model 3_5 posterior with Pathfinder initialization')
+fit3_5 <- model3_5$sample(data = standata3_5, iter_warmup = 100, iter_sampling = 100, chains = 4, parallel_chains = 4,  init = pth3_5)
+draws3_5 <- fit3_5$draws()
+summarise_draws(subset(draws3_5, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE)) |>
+  tt()
+
+draws3_5 <- as_draws_matrix(draws3_5)
+Ef <- exp(apply(subset(draws3_5, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3_5, variable = "f1"), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(daily$irr_mean)))
+Ef2 <- apply(subset(draws3_5, variable = "f2"), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(daily$irr_mean)))
+Ef3 <- apply(subset(draws3_5, variable = "f3"), 2, median)
+Ef3 <- exp(Ef3 - mean(Ef3) + mean(log(daily$irr_mean)))
+pf  <- make_pf(daily, Ef)
+pf1 <- make_pf1(daily, Ef1)
+pf2 <- make_pf2(daily, Ef2, date_breaks = "2 month")
+pf3 <- make_pf3(daily, Ef3)
+compose_4panel(pf, pf1, pf2, pf3)
+```
+# different priors
+```{r}
+model3_5_5 <- cmdstan_model(stan_file = root("stan", "gpbf3_5_5.stan"),include_paths = root("stan"))
+
+standata3_5_5 <- list(x = daily$day,
+                  y = log(daily$irr_mean),
+                  N = length(daily$day),
+                  c_f1 = 1.5, # factor c of basis functions for GP for f1
+                  M_f1 = 20,  # number of basis functions for GP for f1
+                  J_f2 = 20,  # number of basis functions for periodic f2
+                  J_f3 = 20)
+
+tic('Sampling from Pathfinder approximation of model 3 posterior')
+pth3_5_5 <- model3_5_5$pathfinder(data = standata3_5_5, init = 0.1,
+                          num_paths = 10, single_path_draws = 40, draws = 400,
+                          history_size = 50, max_lbfgs_iters = 100, 
+                          refresh = 0, psis_resample=FALSE)
+
+pdraws3_5_5 <- pth3_5_5$draws()
+summarise_draws(subset(pdraws3_5_5, variable = c("lp__")), n_distinct) |>
+  tt()
+
+summarise_draws(subset(pdraws3_5_5, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE),
+                default_summary_measures()) |>
+  tt()
+
+draws3_5_5 <- as_draws_matrix(pdraws3_5_5)
+Ef <- exp(apply(subset(draws3_5_5, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3_5_5, variable = "f1"), 2, median)
+Ef1 <- exp(Ef1 - mean(Ef1) + mean(log(daily$irr_mean)))
+Ef2 <- apply(subset(draws3_5_5, variable = "f2"), 2, median)
+Ef2 <- exp(Ef2 - mean(Ef2) + mean(log(daily$irr_mean)))
+Ef3 <- apply(subset(draws3_5_5, variable = "f3"), 2, median)
+Ef3 <- exp(Ef3 - mean(Ef3) + mean(log(daily$irr_mean)))
+#Ef_day_of_week <- apply(subset(draws3_5, variable = "f_day_of_week"), 2, median)
+#Ef_day_of_week <- exp(Ef_day_of_week - mean(Ef_day_of_week) + mean(log(daily$irr_mean)))
+pf  <- make_pf(daily, Ef)
+pf1 <- make_pf1(daily, Ef1)
+pf2 <- make_pf2(daily, Ef2)
+pf3 <- make_pf3(daily, Ef3)
+compose_4panel(pf, pf1, pf2, pf3)
+```
+# todo detrending
+
+```{r}
+df
+
+mean_irr <- mean(df$irritated)
+mean_tir <- mean(df$tired)
+
+df$irritated <- df$irritated - mean_irr
+df$tired <- df$tired - mean_tir
+
+daily_d <- df %>%
+  group_by(date_parsed, year, month, month_num, week, wday, wday_num) %>%
+  summarise(
+    tired_mean = mean(tired),
+    tired_sd   = sd(tired),
+    irr_mean = mean(irritated),
+    irr_sd = sd(irritated),
+    n_beeps   = n(),
+    .groups   = "drop"
+  )
+
+daily_d <- daily_d %>% mutate(
+  timestamp = as.numeric(date_parsed),
+  day = row_number(),
+  day_of_year = as.numeric(strftime(date_parsed, format = "%j")),
+  day_of_month = day(date_parsed)
+)
+
+p_irr <- daily_d |>  ggplot(aes(x = day, y = irr_mean)) +geom_point() + hline_0(color = "red")
+p_tir <- daily_d |>  ggplot(aes(x = day, y = tired_mean)) +geom_point()+ hline_0(color = "red")
+p_irr
+p_tir
+```
+# detrended values, removed logs and exps, pathfinder is the same
+```{r}
+model3_5 <- cmdstan_model(stan_file = root("stan", "gpbf3_5.stan"),include_paths = root("stan"))
+
+standata3_5 <- list(x = daily_d$day,
+                  y = (daily_d$irr_mean),
+                  N = length(daily_d$day),
+                  c_f1 = 1.5, # factor c of basis functions for GP for f1
+                  M_f1 = 20,  # number of basis functions for GP for f1
+                  J_f2 = 20,  # number of basis functions for periodic f2
+                  J_f3 = 20)
+
+tic('Sampling from Pathfinder approximation of model 3 posterior')
+pth3_5 <- model3_5$pathfinder(data = standata3_5, init = 0.1,
+                          num_paths = 10, single_path_draws = 40, draws = 400,
+                          history_size = 50, max_lbfgs_iters = 100, 
+                          refresh = 0, psis_resample=FALSE)
+
+pdraws3_5 <- pth3_5$draws()
+summarise_draws(subset(pdraws3_5, variable = c("lp__")), n_distinct) |>
+  tt()
+
+summarise_draws(subset(pdraws3_5, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE),
+                default_summary_measures()) |>
+  tt()
+
+draws3_5 <- as_draws_matrix(pdraws3_5)
+Ef <- (apply(subset(draws3_5, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3_5, variable = "f1"), 2, median)
+Ef1 <- (Ef1 - mean(Ef1) + mean((daily_d$irr_mean)))
+Ef2 <- apply(subset(draws3_5, variable = "f2"), 2, median)
+Ef2 <- (Ef2 - mean(Ef2) + mean((daily_d$irr_mean)))
+Ef3 <- apply(subset(draws3_5, variable = "f3"), 2, median)
+Ef3 <- (Ef3 - mean(Ef3) + mean((daily_d$irr_mean)))
+#Ef_day_of_week <- apply(subset(draws3_5, variable = "f_day_of_week"), 2, median)
+#Ef_day_of_week <- exp(Ef_day_of_week - mean(Ef_day_of_week) + mean(log(daily_d$irr_mean)))
+pf  <- make_pf(daily_d, Ef)
+pf1 <- make_pf1(daily_d, Ef1)
+pf2 <- make_pf2(daily_d, Ef2)
+pf3 <- make_pf3(daily_d, Ef3)
+compose_4panel(pf, pf1, pf2, pf3)
+
+```
+
+```{r}
+tic('MCMC sampling from model 3_5 posterior with Pathfinder initialization')
+fit3_5 <- model3_5$sample(data = standata3_5, iter_warmup = 100, iter_sampling = 100, chains = 4, parallel_chains = 4,  init = pth3_5)
+draws3_5 <- fit3_5$draws()
+summarise_draws(subset(draws3_5, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE)) |>
+  tt()
+
+draws3_5 <- as_draws_matrix(draws3_5)
+Ef <- (apply(subset(draws3_5, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3_5, variable = "f1"), 2, median)
+#Ef1 <- (Ef1 - mean(Ef1) + mean((daily_d$irr_mean)))
+Ef2 <- apply(subset(draws3_5, variable = "f2"), 2, median)
+#Ef2 <- (Ef2 - mean(Ef2) + mean((daily_d$irr_mean)))
+Ef3 <- apply(subset(draws3_5, variable = "f3"), 2, median)
+#Ef3 <- (Ef3 - mean(Ef3) + mean((daily_d$irr_mean)))
+pf  <- make_pf(daily_d, Ef)
+pf1 <- make_pf1(daily_d, Ef1)
+pf2 <- make_pf2(daily_d, Ef2, date_breaks = "2 month")
+pf3 <- make_pf3(daily_d, Ef3)
+compose_4panel(pf, pf1, pf2, pf3)
+```
+
+```{r}
+ggsave("stan_final_detrended.png", compose_4panel(pf, pf1, pf2, pf3), width = 10, height = 6,
+        dpi = 180)
+save(fit3_5, file = "fit3_5_irr_detrended.RData")
+load(file = "fit3_5_irr_detrended.RData")
+```
+
+# no pathfinder init
+```{r}
+#tic('MCMC sampling from model 3_5 posterior with Pathfinder initialization')
+fit3_5_n <- model3_5$sample(data = standata3_5, iter_warmup = 50, iter_sampling = 50, chains = 3, parallel_chains = 3)#,  init = pth3_5)
+draws3_5_n <- fit3_5_n$draws()
+summarise_draws(subset(draws3_5_n, variable = c("sigma_", "lengthscale_", "sigma"), regex = TRUE)) |>
+  tt()
+
+draws3_5_n <- as_draws_matrix(draws3_5_n)
+Ef <- (apply(subset(draws3_5_n, variable = "f"), 2, median))
+Ef1 <- apply(subset(draws3_5_n, variable = "f1"), 2, median)
+#Ef1 <- (Ef1 - mean(Ef1) + mean((daily_d$irr_mean)))
+Ef2 <- apply(subset(draws3_5_n, variable = "f2"), 2, median)
+#Ef2 <- (Ef2 - mean(Ef2) + mean((daily_d$irr_mean)))
+Ef3 <- apply(subset(draws3_5_n, variable = "f3"), 2, median)
+#Ef3 <- (Ef3 - mean(Ef3) + mean((daily_d$irr_mean)))
+pf  <- make_pf(daily_d, Ef)
+pf1 <- make_pf1(daily_d, Ef1)
+pf2 <- make_pf2(daily_d, Ef2, date_breaks = "2 month")
+pf3 <- make_pf3(daily_d, Ef3)
+compose_4panel(pf, pf1, pf2, pf3)
+```
+# simple model
+```{r}
+library(dplyr)
+library(rstan)
+library(ggplot2)
+
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+
+stan_data <- list(
+  N = nrow(daily_d),
+  y = daily_d$irr_mean,
+  x = daily_d$day
+)
+
+fit_eq_overall <- stan(
+  file = "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/stan/gp_eq_overall.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_eq_overall,
+  pars = c("length_scale","variance","sigma","eta")
+)
+
+save(
+  fit_eq_overall,
+  file = "fit_eq_overall.RData"
+)
+
+
+post_eq_overall <- rstan::extract(fit_eq_overall)
+eta <- apply(post_eq_overall$eta, 2, mean)
+plot(daily_d$day, eta)
+```
+```{r}
+
+stan_data <- list(
+  N1 = nrow(daily_d),
+  y1 = daily_d$irr_mean,
+  x1 = daily_d$day,
+  N2 = 62,
+  x2 = seq(239, 300, by = 1)
+)
+
+fit_eq_overall_pr <- stan(
+  file = "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/stan/gp_eq_overall_predictive.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_eq_overall_pr,
+  pars = c("length_scale","variance","sigma","eta")
+)
+
+# save(
+#   fit_eq_overall_pr,
+#   file = "fit_eq_overall_pr.RData"
+# )
+
+
+post_eq_overall_pr <- rstan::extract(fit_eq_overall_pr)
+y2 <- apply(post_eq_overall_pr$y2, 2, mean)
+pred <- data.frame(x = append(daily_d$day, seq(239, 300, by = 1)), y = append(daily_d$irr_mean, y2))
+plot( seq(239, 300, by = 1), y2)
+plot(pred$x, pred$y)
+```
+
+# check fit
+```{r}
+stan_data <- list(
+  N = nrow(daily_d),
+  y = daily_d$irr_mean,
+  x = daily_d$day
+)
+
+fit_eq_overall <- stan(
+  file = "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/stan/gp_eq_overall.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_eq_overall,
+  pars = c("length_scale","variance","sigma","eta", "fit")
+)
+
+# save(
+#   fit_eq_overall,
+#   file = "fit_eq_overall.RData"
+# )
+
+
+post_eq_overall <- rstan::extract(fit_eq_overall)
+fit <- apply(post_eq_overall$fit, 2, mean)
+par(mfrow = c(1, 2))
+p1<-plot(daily_d$day, fit)
+p2<-plot(daily_d$day, daily_d$irr_mean)
+p1
+p2
+```
+
+```{r}
+var( daily_d$irr_mean)
+par(mfrow = c(1, 2))
+p1<-plot(daily_d$day, fit, type = "l")
+p2<-plot(daily_d$day, (daily_d$irr_mean)/(var(daily_d$irr_mean)))
+p1
+p2
+```
+# check fit of synthetic data
+```{r}
+x<- seq(1, 100, by=1)
+y<- 30*sin(x/5) #+ x
+plot(x, y, type = "l")
+
+stan_data <- list(
+  N = length(x),
+  y = y,
+  x = x
+)
+
+fit_eq_overall <- stan(
+  file = "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/stan/gp_eq_overall.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_eq_overall,
+  pars = c("length_scale","variance","sigma","eta", "fit")
+)
+
+# save(
+#   fit_eq_overall,
+#   file = "fit_eq_overall.RData"
+# )
+
+post_eq_overall$length_scale
+
+post_eq_overall <- rstan::extract(fit_eq_overall)
+fit <- apply(post_eq_overall$fit, 2, mean)
+eta <- apply(post_eq_overall$eta, 2, mean)
+#par(mfrow = c(1, 2))
+p1<-plot(x, fit)
+plot(x, eta)
+#p2<-plot(x, y)
+p1
+#p2
+```
+# fit is ok even for large scales, will try different priors
+
+```{r}
+stan_data <- list(
+  N = length(x),
+  y = y,
+  x = x
+)
+
+fit_eq_overall <- stan(
+  file = "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/stan/gp_eq_overall_weird_priors.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_eq_overall,
+  pars = c("length_scale","variance","sigma","eta", "fit")
+)
+
+# save(
+#   fit_eq_overall,
+#   file = "fit_eq_overall.RData"
+# )
+
+
+post_eq_overall <- rstan::extract(fit_eq_overall)
+fit <- apply(post_eq_overall$fit, 2, mean)
+eta <- apply(post_eq_overall$eta, 2, mean)
+pred<- data.frame(x = x, y = y, fit = fit)
+ggplot(pred, aes(x, y)) + geom_point() + geom_line(aes(x, fit), color = "red")
+```
+# weid priors are not breaking synthetic data
+
+# weird priors + prediction work 
+#  intercept ~ normal(0, 5);
+#  length_scale ~ inv_gamma(5, 1);
+#  variance ~ normal(100, 50);
+#  sigma ~ normal(1000, 50);
+#  eta ~ normal(100, 10);
+
+```{r}
+stan_data <- list(
+  N1 = nrow(daily_d),
+  y1 = daily_d$irr_mean,
+  x1 = daily_d$day,
+  N2 = 62,
+  x2 = seq(239, 300, by = 1)
+)
+
+fit_eq_overall_pr <- stan(
+  file = "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/stan/gp_eq_overall_predictive.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_eq_overall_pr,
+  pars = c("length_scale","variance","sigma", "intercept")
+)
+
+save(
+  fit_eq_overall_pr,
+  file = "what.RData"
+)
+
+load(file = "what.RData")
+
+new_fit <- rstan::extract(fit_eq_overall_pr)
+fit_n <- apply(new_fit$fit, 2, mean)
+y2_n <- apply(new_fit$y2, 2, mean)
+pred <- data.frame(da_x = append(daily_d$day, seq(239, 300, by = 1)), 
+                   da_y = append(daily_d$irr_mean, rep(0, 62)), 
+                   gp = append(fit_n, y2_n))
+
+ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
+beep()
+```
+# not-squared params
+```{r}
+
+stan_data <- list(
+  N = nrow(daily_d),
+  y = daily_d$irr_mean,
+  x = daily_d$day
+)
+
+fit_nonsq <- stan(
+  file = "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/stan/gp_eq_overall.stan",
+  data = stan_data,
+  chains = 3,
+  iter = 300,
+  warmup = 100,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_nonsq,
+  pars = c("length_scale","variance","sigma","intercept")
+)
+
+save(
+  fit_nonsq,
+  file = "fit_nonsq.RData"
+)
+
+
+post_fit_nonsq <- rstan::extract(fit_nonsq)
+
+fit_n <- apply(post_fit_nonsq$fit, 2, mean)
+
+pred <- data.frame(da_x = (daily_d$day), 
+                   da_y = (daily_d$irr_mean), 
+                   gp = (fit_n))
+
+p<-ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
+p
+ggsave("fiiiinal.png", p, width = 10, height = 6,
+        dpi = 180)
+```
+
+# combined eq and  periodic
+
+```{r}
+stan_data <- list(
+  N = nrow(daily_d),
+  y = daily_d$irr_mean,
+  x = daily_d$day
+)
+
+fit_eq_per <- stan(
+  file = "C:/Users/margo/stan/gp_eq_periodic_weekly.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_eq_per,
+  pars = c("length_scale_k1","variance_k1", "length_scale_k2","variance_k2","sigma","intercept")
+)
+
+save(
+  fit_eq_per,
+  file = "fit_eq_per.RData"
+)
+
+
+post_fit_eq_per <- rstan::extract(fit_eq_per)
+
+fit_n <- apply(post_fit_eq_per$fit, 2, mean)
+
+pred <- data.frame(da_x = (daily_d$day), 
+                   da_y = (daily_d$irr_mean), 
+                   gp = (fit_n))
+
+ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
+beep()
+```
+
+```{r}
+stan_data <- list(
+  N = nrow(daily_d),
+  y = daily_d$irr_mean,
+  x = daily_d$day
+)
+
+fit_ou_per <- stan(
+  file = "C:/Users/margo/stan/gp_OU_periodic_weekly.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_ou_per,
+  pars = c("length_scale_k1","variance_k1", "length_scale_k2","variance_k2","sigma","intercept")
+)
+
+save(
+  fit_ou_per,
+  file = "fit_ou_per.RData"
+)
+
+
+post_fit_ou_per <- rstan::extract(fit_ou_per)
+
+fit_n <- apply(post_fit_ou_per$fit, 2, mean)
+
+pred <- data.frame(da_x = (daily_d$day), 
+                   da_y = (daily_d$irr_mean), 
+                   gp = (fit_n))
+
+ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
+beep()
+```
+
+```{r}
+stan_data <- list(
+  N = nrow(daily_d),
+  y = daily_d$irr_mean,
+  x = daily_d$day
+)
+
+fit_ou_per_per <- stan(
+  file = "C:/Users/margo/stan/gp_OU_periodic_weekly_monthly.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_ou_per_per,
+  pars = c("length_scale_k1","variance_k1", "length_scale_k2","variance_k2","length_scale_k3","variance_k3","sigma","intercept")
+)
+
+save(
+  fit_ou_per_per,
+  file = "fit_ou_per_per.RData"
+)
+
+
+post_fit_ou_per_per <- rstan::extract(fit_ou_per_per)
+
+fit_n <- apply(post_fit_ou_per_per$fit, 2, mean)
+
+pred <- data.frame(da_x = (daily_d$day), 
+                   da_y = (daily_d$irr_mean), 
+                   gp = (fit_n))
+
+ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
+beep()
+```
+# decomposed
+
+```{r}
+
+stan_data <- list(
+  N = nrow(daily_d),
+  y = daily_d$irr_mean,
+  x = daily_d$day
+)
+
+fit_ou_per_per_dec <- stan(
+  file = "C:/Users/margo/stan/gp_OU_periodic_weekly_monthly_decomposed.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+print(
+  fit_ou_per_per_dec,
+  pars = c("length_scale_k1","variance_k1", "length_scale_k2","variance_k2","length_scale_k3","variance_k3","sigma","intercept")
+)
+
+save(
+  fit_ou_per_per_dec,
+  file = "fit_ou_per_per_dec.RData"
+)
+
+
+post_fit_ou_per_per_dec <- rstan::extract(fit_ou_per_per_dec)
+
+fit_n <- apply(post_fit_ou_per_per_dec$fit, 2, mean)
+eff_1 <- apply(post_fit_ou_per_per_dec$eff_1, 2, mean)
+eff_2 <- apply(post_fit_ou_per_per_dec$eff_2, 2, mean)
+eff_3 <- apply(post_fit_ou_per_per_dec$eff_3, 2, mean)
+
+pred <- data.frame(da_x = (daily_d$day), 
+                   da_y = (daily_d$irr_mean), 
+                   gp = (fit_n), 
+                   e_1 = eff_1, 
+                   e_2 = eff_2, 
+                   e_3 = eff_3)
+
+fit_plot<- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
+eff_1_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_1), color = "red")
+eff_2_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_2), color = "red")
+eff_3_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_3), color = "red")
+(fit_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
+beep()
+```
+
+```{r}
+ggsave("final_decomposed.png", (fit_plot + eff_1_plot) / (eff_2_plot + eff_3_plot), width = 10, height = 6,
+        dpi = 180)
+```
 
