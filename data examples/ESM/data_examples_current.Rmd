@@ -40,14 +40,14 @@ library(ggplot2)
 
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
-
+library(readxl)
 set.seed(123)
 ```
 
 
 ```{r}
-#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESMdata/ESMdata.csv")
-data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
+data <- read_excel( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESM/data/ESMdata.xlsx")
+#data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
 
 names(data)[names(data)=="...1"] <- "datapoint"
 
@@ -402,9 +402,15 @@ pred <- data.frame(da_x = append(daily_d$day, seq(239, 300, by = 1)),
                    e_3 = eff_3)
 
 fit_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
-eff_1_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_1), color = "red")
+
+ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean)) + geom_line(aes(x = daily_d$day, y = fit_n))
+  
+eff_1_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_1), color = "red") 
+
 eff_2_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_2), color = "red")
+
 eff_3_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_3), color = "red")
+
 p<-(fit_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
 p
 ggsave("gp_ou_per_per_dec_predictive_priors_3.png", p, width = 10, height = 6,dpi = 180)
@@ -472,7 +478,7 @@ ggsave("gp_eq_ou_per_per_dec_predictive_priors.png", p, width = 10, height = 15,
 
 
 ```{r}
-
+load(  file = "stan/fits/fit_final_dec_predictive_priors_3.RData")  
 ```
 
 

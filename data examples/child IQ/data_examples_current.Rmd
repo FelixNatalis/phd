@@ -46,8 +46,8 @@ set.seed(123)
 
 
 ```{r}
-#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/child IQ/data/kid_iq.csv")
-data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/child IQ/data/kid_iq.csv")
+data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/child IQ/data/kid_iq.csv")
+#data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/child IQ/data/kid_iq.csv")
 names(data)[names(data)=="...1"] <- "datapoint"
 
 min_IQ = 0
@@ -65,8 +65,7 @@ ggsave("lm.png", p2, width = 10, height = 6,dpi = 180)
 
 data_no_hs <-  data[data$mom_hs==0,]
 data_hs<- data[data$mom_hs==1,]
-```
-```{r}
+
 # _____ plots____
 
 clr_bg     <- "#FFFFFF" #"#0f1117"
@@ -148,10 +147,10 @@ model_no_hs <- create(
   class = "lineqGP",
   x = x,
   y = y,
-  constrType = c("boundedness", "monotonicity")#,
-  #m = 30
+  constrType = c("boundedness", "monotonicity"),
+  m = 30
 )
-model_no_hs$m <- 100
+#model_no_hs$m <- 100
 model_no_hs$bounds[1, ] <- c(0, 1)
 model_no_hs$varnoise <- 1e-2
 
@@ -183,9 +182,10 @@ model_hs_u <- create(
   class = "lineqGP",
   x = x,
   y = y,
-  constrType = c("boundedness")#,m = 100
+  constrType = c("boundedness"),
+  m = 30
 )
-model_hs_u$m <- 100
+#model_hs_u$m <- 100
 model_hs_u$varnoise <- 1e-2
 model_hs_u$bounds <- c(-10,10)
 model_hs_u <- augment(model_hs_u)
@@ -215,9 +215,10 @@ model <- create(
   class = "lineqGP",
   x = x,
   y = y,
-  constrType = c("boundedness", "monotonicity")#, m = 30
+  constrType = c("boundedness", "monotonicity"),
+  m = 30
 )
-model$m <- 100
+#model$m <- 100
 model$bounds[1, ] <- c(0, 1)
 model$varnoise <- 1e-2
 
@@ -243,10 +244,10 @@ points <- geom_point(data = data, aes(x = (mom_iq), y = (kid_score), color = fac
 
 line_hs<- geom_line(data = pred_hs_u, aes(x = da_x, y = gp), color = "darkslategray4", linewidth = 1)
 
-line_no_hs <- geom_line(data = pred_no_hs_u, aes(x = da_x, y = gp), color = "indianred3", linewidth = 1)
+line_no_hs <- geom_line(data = pred_no_hs, aes(x = da_x, y = gp), color = "indianred3", linewidth = 1)
 
-qtls_hs <- apply(sim.model_hs_u$ysim, 1, quantile, probs = c(0.05, 0.95))
-qtls_no_hs <- apply(sim.model_no_hs_u$ysim, 1, quantile, probs = c(0.05, 0.95))
+qtls_hs <- apply(sim.model$ysim, 1, quantile, probs = c(0.05, 0.95))
+qtls_no_hs <- apply(sim.model_no_hs$ysim, 1, quantile, probs = c(0.05, 0.95))
 
 ci_hs <- geom_ribbon(aes(x = data_hs$mom_iq, ymin = qtls_hs[1, ], ymax = qtls_hs[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
   
@@ -254,7 +255,7 @@ ci_no_hs <- geom_ribbon(aes(x = data_no_hs$mom_iq, ymin = qtls_no_hs[1, ], ymax 
 
 p1 <- ggplot()  + points  + ci_hs + ci_no_hs + line_hs + line_no_hs
 p1
-ggsave("unconstrained_gps.png", p1, width = 10, height = 6,dpi = 180)
+ggsave("constrained_gps.png", p1, width = 10, height = 6,dpi = 180)
 ```
 ## PREDICTION
 # NO HS 
@@ -285,7 +286,7 @@ points <- data.frame(x = (x), y = (y))
 ymean = apply(ysim, 1, mean)
 lines <- data.frame(x = x_test, y = ymean)
 
-ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red")
+ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
 ```
 
 ## HS
@@ -319,7 +320,7 @@ points<- data.frame(x = (x),
 ymean = apply(ysim, 1, mean)
 lines <- data.frame(x = x_test, y = ymean)
 
-ggplot( ) + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red")
+ggplot( ) + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
 ```
 
 
@@ -330,6 +331,5 @@ ggplot( ) + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = line
 
 
 ```{r}
-# TODO confidence intervals
 ```
 
