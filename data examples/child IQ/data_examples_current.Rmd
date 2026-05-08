@@ -1,5 +1,4 @@
 ```{r}
-library(tidyverse)
 library(lineqGPR)
 library(stringr)
 library(reshape2)
@@ -47,8 +46,8 @@ set.seed(123)
 
 
 ```{r}
-data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/child IQ/data/kid_iq.csv")
-#data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/child IQ/data/kid_iq.csv")
+#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/child IQ/data/kid_iq.csv")
+data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/child IQ/data/kid_iq.csv")
 names(data)[names(data)=="...1"] <- "datapoint"
 
 min_IQ = 0
@@ -116,9 +115,9 @@ model_no_hs_u <- create(
   class = "lineqGP",
   x = x,
   y = y,
-  constrType = c("boundedness"),
-  m = 100
+  constrType = c("boundedness")
 )
+model_no_hs_u$m = 100
 model_no_hs_u$varnoise <- 1e-2
 model_no_hs_u$bounds <- c(-10,10)
 model_no_hs_u <- augment(model_no_hs_u)
@@ -128,13 +127,16 @@ sim.model_no_hs_u <- simulate(model_no_hs_u,
                       nsim = 1e2,
                       seed = 1)
 beep()
+ysim <- sim.model_no_hs_u$ysim
+qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
 
 pred_no_hs_u <- data.frame(
   da_x = x,
   da_y = y,
-  gp = apply(sim.model_no_hs_u$ysim, 1, mean)
+  gp = apply(ysim, 1, mean)
 )
-ggplot(pred_no_hs_u, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
+
+ggplot() + geom_point(data = pred_no_hs_u, aes(x = da_x, y = da_y)) + geom_line(data = pred_no_hs_u, aes(x = da_x, y = gp), color = "red") +     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
 ```
 
 # monotonic bounded
@@ -146,9 +148,10 @@ model_no_hs <- create(
   class = "lineqGP",
   x = x,
   y = y,
-  constrType = c("boundedness", "monotonicity"),
-  m = 30
+  constrType = c("boundedness", "monotonicity")#,
+  #m = 30
 )
+model_no_hs$m <- 100
 model_no_hs$bounds[1, ] <- c(0, 1)
 model_no_hs$varnoise <- 1e-2
 
@@ -158,12 +161,16 @@ sim.model_no_hs <- simulate(model_no_hs,
                       seed = 1)
 beep()
 
+ysim <- sim.model_no_hs$ysim
+qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
 pred_no_hs <- data.frame(
   da_x = x,
   da_y = y,
-  gp = apply(sim.model_no_hs$ysim, 1, mean)
+  gp = apply(ysim, 1, mean)
 )
-ggplot(pred_no_hs, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
+
+ggplot() + geom_point(data = pred_no_hs, aes(x = da_x, y = da_y)) + geom_line(data = pred_no_hs, aes(x = da_x, y = gp), color = "red") +     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
 ```
 
 # HS
@@ -176,9 +183,9 @@ model_hs_u <- create(
   class = "lineqGP",
   x = x,
   y = y,
-  constrType = c("boundedness"),
-  m = 100
+  constrType = c("boundedness")#,m = 100
 )
+model_hs_u$m <- 100
 model_hs_u$varnoise <- 1e-2
 model_hs_u$bounds <- c(-10,10)
 model_hs_u <- augment(model_hs_u)
@@ -189,12 +196,15 @@ sim.model_hs_u <- simulate(model_hs_u,
                       seed = 1)
 beep()
 
+ysim <- sim.model_hs_u$ysim
+qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
 pred_hs_u <- data.frame(
   da_x = x,
   da_y = y,
-  gp = apply(sim.model_hs_u$ysim, 1, mean)
+  gp = apply(ysim, 1, mean)
 )
-ggplot(pred_hs_u, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
+ggplot(pred_hs_u, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")+     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
 ```
 
 # monotonic bounded 
@@ -205,9 +215,9 @@ model <- create(
   class = "lineqGP",
   x = x,
   y = y,
-  constrType = c("boundedness", "monotonicity"),
-  m = 30
+  constrType = c("boundedness", "monotonicity")#, m = 30
 )
+model$m <- 100
 model$bounds[1, ] <- c(0, 1)
 model$varnoise <- 1e-2
 
@@ -217,12 +227,15 @@ sim.model <- simulate(model,
                       seed = 1)
 beep()
 
+ysim <- sim.model$ysim
+qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
 pred_hs <- data.frame(
   da_x = x,
   da_y = y,
-  gp = apply(sim.model$ysim, 1, mean)
+  gp = apply(ysim, 1, mean)
 )
-ggplot(pred_hs, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
+ggplot(pred_hs, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")+     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
 ```
 
 ```{r}
@@ -232,7 +245,14 @@ line_hs<- geom_line(data = pred_hs_u, aes(x = da_x, y = gp), color = "darkslateg
 
 line_no_hs <- geom_line(data = pred_no_hs_u, aes(x = da_x, y = gp), color = "indianred3", linewidth = 1)
 
-p1 <- ggplot()  + points + line_hs + line_no_hs
+qtls_hs <- apply(sim.model_hs_u$ysim, 1, quantile, probs = c(0.05, 0.95))
+qtls_no_hs <- apply(sim.model_no_hs_u$ysim, 1, quantile, probs = c(0.05, 0.95))
+
+ci_hs <- geom_ribbon(aes(x = data_hs$mom_iq, ymin = qtls_hs[1, ], ymax = qtls_hs[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
+  
+ci_no_hs <- geom_ribbon(aes(x = data_no_hs$mom_iq, ymin = qtls_no_hs[1, ], ymax = qtls_no_hs[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
+
+p1 <- ggplot()  + points  + ci_hs + ci_no_hs + line_hs + line_no_hs
 p1
 ggsave("unconstrained_gps.png", p1, width = 10, height = 6,dpi = 180)
 ```
@@ -241,7 +261,7 @@ ggsave("unconstrained_gps.png", p1, width = 10, height = 6,dpi = 180)
 ```{r}
 x <- data_no_hs$mom_iq
 y <- data_no_hs$kid_score
-x_test <- append(seq(0, 0.45, by = 0.05),append(x, seq(0.8, 1, by = 0.05)))
+x_test <- append(seq(0, 0.45, by = 0.05), append(x, seq(0.8, 1, by = 0.05)))
 model_no_hs <- create(
   class = "lineqGP",
   x = x,
@@ -253,17 +273,19 @@ model_no_hs$bounds[1, ] <- c(0, 1)
 model_no_hs$varnoise <- 1e-2
 
 sim.model_no_hs <- simulate(model_no_hs,
-                      xtest = x_test,
-                      nsim = 1e2,
-                      seed = 1)
+                            xtest = x_test,
+                            nsim = 1e2,
+                            seed = 1)
 beep()
 
-points<- data.frame(x = (x),
-  y = (y))
-ymean = apply(sim.model_no_hs$ysim, 1, mean)
+ysim <- sim.model_no_hs$ysim
+qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
+points <- data.frame(x = (x), y = (y))
+ymean = apply(ysim, 1, mean)
 lines <- data.frame(x = x_test, y = ymean)
 
-ggplot( ) + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red")
+ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red")
 ```
 
 ## HS
@@ -272,13 +294,14 @@ ggplot( ) + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = line
 x <- data_hs$mom_iq
 y <- data_hs$kid_score
 x_test <- append(seq(0, 0.40, by = 0.05),append(x, seq(0.8, 1, by = 0.05)))
-model <- create(
+model <- lineqGPR::create(
   class = "lineqGP",
   x = x,
   y = y,
   constrType = c("boundedness", "monotonicity"),
   m = 30
 )
+
 model$bounds[1, ] <- c(0, 1)
 model$varnoise <- 1e-2
 
@@ -288,11 +311,25 @@ sim.model <- simulate(model,
                       seed = 1)
 beep()
 
+ysim <- sim.model$ysim
+qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
 points<- data.frame(x = (x),
   y = (y))
-ymean = apply(sim.model$ysim, 1, mean)
+ymean = apply(ysim, 1, mean)
 lines <- data.frame(x = x_test, y = ymean)
 
 ggplot( ) + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red")
+```
+
+
+
+```{r}
+# TODO compare models
+```
+
+
+```{r}
+# TODO confidence intervals
 ```
 
