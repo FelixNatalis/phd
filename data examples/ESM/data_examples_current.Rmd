@@ -47,8 +47,8 @@ set.seed(123)
 
 
 ```{r}
-data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESM/data/ESMdata.csv")
-#data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESMdata/ESMdata.csv")
+#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/ESM/data/ESMdata.csv")
+data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/ESM/data/ESMdata.csv")
 
 names(data)[names(data)=="...1"] <- "datapoint"
 
@@ -165,6 +165,7 @@ save(
   file = "fit_ou_per_per_dec.RData"
 )
 
+load(  file = "fit_ou_per_per_dec.RData")
 
 post_fit_ou_per_per_dec <- rstan::extract(fit_ou_per_per_dec)
 
@@ -173,6 +174,12 @@ eff_1 <- apply(post_fit_ou_per_per_dec$eff_1, 2, mean)
 eff_2 <- apply(post_fit_ou_per_per_dec$eff_2, 2, mean)
 eff_3 <- apply(post_fit_ou_per_per_dec$eff_3, 2, mean)
 
+
+qtls_fit<-posterior_interval(post_fit_ou_per_per_dec$fit)
+qtls_eff_1<-posterior_interval(post_fit_ou_per_per_dec$eff_1)
+qtls_eff_2<-posterior_interval(post_fit_ou_per_per_dec$eff_2)
+qtls_eff_3<-posterior_interval(post_fit_ou_per_per_dec$eff_3)
+
 pred <- data.frame(da_x = (daily_d$day), 
                    da_y = (daily_d$irr_mean), 
                    gp = (fit_n), 
@@ -180,10 +187,10 @@ pred <- data.frame(da_x = (daily_d$day),
                    e_2 = eff_2, 
                    e_3 = eff_3)
 
-fit_plot<- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
-eff_1_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_1), color = "red")
-eff_2_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_2), color = "red")
-eff_3_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_3), color = "red")
+fit_plot<-  ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred, aes(da_x, gp), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4)
+eff_1_plot <-  ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred, aes(da_x, e_1), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_1[,1], ymax = qtls_eff_1[,2]), fill = "gray60", alpha = 0.4)
+eff_2_plot <-  ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred, aes(da_x, e_2), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_2[,1], ymax = qtls_eff_2[,2]), fill = "gray60", alpha = 0.4)
+eff_3_plot <-  ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred, aes(da_x, e_3), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_3[,1], ymax = qtls_eff_3[,2]), fill = "gray60", alpha = 0.4)
 (fit_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
 beep()
 ```
@@ -226,17 +233,27 @@ y2_n <- apply(post_fit_final_dec_predictive$y_2, 2, mean)
 eff_1 <- apply(post_fit_final_dec_predictive$eff_1, 2, mean)
 eff_2 <- apply(post_fit_final_dec_predictive$eff_2, 2, mean)
 eff_3 <- apply(post_fit_final_dec_predictive$eff_3, 2, mean)
+
+qtls_fit<-posterior_interval(post_fit_final_dec_predictive$fit)
+qtls_pred<-posterior_interval(post_fit_final_dec_predictive$y_2)
+qtls_eff_1<-posterior_interval(post_fit_final_dec_predictive$eff_1)
+qtls_eff_2<-posterior_interval(post_fit_final_dec_predictive$eff_2)
+qtls_eff_3<-posterior_interval(post_fit_final_dec_predictive$eff_3)
+
+
 pred <- data.frame(da_x = append(daily_d$day, seq(239, 300, by = 1)), 
                    da_y = append(daily_d$irr_mean, rep(0, 62)), 
                    gp = append(fit_n, y2_n), 
+                   ci_05 = append(qtls_fit[, 1],qtls_pred[, 1]),
+                   ci_95 = append(qtls_fit[, 2],qtls_pred[, 2]),
                    e_1 = eff_1, 
                    e_2 = eff_2, 
                    e_3 = eff_3)
 
-fit_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
-eff_1_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_1), color = "red")
-eff_2_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_2), color = "red")
-eff_3_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_3), color = "red")
+fit_plot <-  ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred, aes(da_x, gp), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4)
+eff_1_plot <-  ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred, aes(da_x, e_1), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_1[,1], ymax = qtls_eff_1[,2]), fill = "gray60", alpha = 0.4)
+eff_2_plot <-  ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred, aes(da_x, e_2), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_2[,1], ymax = qtls_eff_2[,2]), fill = "gray60", alpha = 0.4)
+eff_3_plot <-  ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred, aes(da_x, e_3), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_3[,1], ymax = qtls_eff_3[,2]), fill = "gray60", alpha = 0.4)
 p<-(fit_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
 p
 beep()
@@ -278,23 +295,35 @@ save(
   file = "fit_final_dec_predictive_priors.RData"
 )
 
+load(file = "fit_final_dec_predictive_priors.RData")
+
 post_fit_final_dec_predictive_priors <- rstan::extract(fit_final_dec_predictive_priors)
 fit_n <- apply(post_fit_final_dec_predictive_priors$fit, 2, mean)
 y2_n <- apply(post_fit_final_dec_predictive_priors$y_2, 2, mean)
 eff_1 <- apply(post_fit_final_dec_predictive_priors$eff_1, 2, mean)
 eff_2 <- apply(post_fit_final_dec_predictive_priors$eff_2, 2, mean)
 eff_3 <- apply(post_fit_final_dec_predictive_priors$eff_3, 2, mean)
+
+
+qtls_fit<-posterior_interval(post_fit_final_dec_predictive_priors$fit)
+qtls_pred<-posterior_interval(post_fit_final_dec_predictive_priors$y_2)
+qtls_eff_1<-posterior_interval(post_fit_final_dec_predictive_priors$eff_1)
+qtls_eff_2<-posterior_interval(post_fit_final_dec_predictive_priors$eff_2)
+qtls_eff_3<-posterior_interval(post_fit_final_dec_predictive_priors$eff_3)
+
 pred <- data.frame(da_x = append(daily_d$day, seq(239, 300, by = 1)), 
                    da_y = append(daily_d$irr_mean, rep(0, 62)), 
                    gp = append(fit_n, y2_n), 
+                   ci_05 = append(qtls_fit[, 1],qtls_pred[, 1]),
+                   ci_95 = append(qtls_fit[, 2],qtls_pred[, 2]),
                    e_1 = eff_1, 
                    e_2 = eff_2, 
                    e_3 = eff_3)
 
-fit_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
-eff_1_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_1), color = "red")
-eff_2_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_2), color = "red")
-eff_3_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_3), color = "red")
+fit_plot <- ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean)) + geom_line(data = pred,aes(da_x, gp), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4)
+eff_1_plot <- ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean)) + geom_line(data = pred,aes(da_x, e_1), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_1[,1], ymax = qtls_eff_1[,2]), fill = "gray60", alpha = 0.4)
+eff_2_plot <- ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean)) + geom_line(data = pred,aes(da_x, e_2), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_2[,1], ymax = qtls_eff_2[,2]), fill = "gray60", alpha = 0.4)
+eff_3_plot <- ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean)) + geom_line(data = pred,aes(da_x, e_3), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_3[,1], ymax = qtls_eff_3[,2]), fill = "gray60", alpha = 0.4)
 p<-(fit_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
 p
 ggsave("gp_ou_per_per_dec_predictive_priors.png", p, width = 10, height = 6,dpi = 180)
@@ -335,7 +364,7 @@ save(
   file = "fit_final_dec_predictive_priors_2.RData"
 )
 
-load(file = "/fits/fit_final_dec_predictive_priors_2.RData")
+load(file = "fit_final_dec_predictive_priors_2.RData")
 
 post_fit_final_dec_predictive_priors_2 <- rstan::extract(fit_final_dec_predictive_priors_2)
 fit_n <- apply(post_fit_final_dec_predictive_priors_2$fit, 2, mean)
@@ -343,17 +372,26 @@ y2_n <- apply(post_fit_final_dec_predictive_priors_2$y_2, 2, mean)
 eff_1 <- apply(post_fit_final_dec_predictive_priors_2$eff_1, 2, mean)
 eff_2 <- apply(post_fit_final_dec_predictive_priors_2$eff_2, 2, mean)
 eff_3 <- apply(post_fit_final_dec_predictive_priors_2$eff_3, 2, mean)
+
+qtls_fit<-posterior_interval(post_fit_final_dec_predictive_priors_2$fit)
+qtls_pred<-posterior_interval(post_fit_final_dec_predictive_priors_2$y_2)
+qtls_eff_1<-posterior_interval(post_fit_final_dec_predictive_priors_2$eff_1)
+qtls_eff_2<-posterior_interval(post_fit_final_dec_predictive_priors_2$eff_2)
+qtls_eff_3<-posterior_interval(post_fit_final_dec_predictive_priors_2$eff_3)
+
 pred <- data.frame(da_x = append(daily_d$day, seq(239, 300, by = 1)), 
                    da_y = append(daily_d$irr_mean, rep(0, 62)), 
                    gp = append(fit_n, y2_n), 
+                   ci_05 = append(qtls_fit[, 1],qtls_pred[, 1]),
+                   ci_95 = append(qtls_fit[, 2],qtls_pred[, 2]),
                    e_1 = eff_1, 
                    e_2 = eff_2, 
                    e_3 = eff_3)
 
-fit_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
-eff_1_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_1), color = "red")
-eff_2_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_2), color = "red")
-eff_3_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_3), color = "red")
+fit_plot <-ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean)) + geom_line(data = pred,aes(da_x, gp), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4)
+eff_1_plot <- ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean)) + geom_line(data = pred,aes(da_x, e_1), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_1[,1], ymax = qtls_eff_1[,2]), fill = "gray60", alpha = 0.4)
+eff_2_plot <- ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean)) + geom_line(data = pred,aes(da_x, e_2), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_2[,1], ymax = qtls_eff_2[,2]), fill = "gray60", alpha = 0.4)
+eff_3_plot <-ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean)) + geom_line(data = pred,aes(da_x, e_3), color = "red")+ geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_3[,1], ymax = qtls_eff_3[,2]), fill = "gray60", alpha = 0.4)
 p<-(fit_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
 p
 ggsave("gp_ou_per_per_dec_predictive_priors_2.png", p, width = 10, height = 6,dpi = 180)
@@ -460,7 +498,7 @@ save(
   file = "fit_adding_eq_dec_predictive_priors.RData"
 )
 
-load("/stan/fits/gp_eq_OU_periodic_weekly_monthly_decomposed_predictive_priors.RData")
+load("fit_adding_eq_dec_predictive_priors.RData")
 
 post_fit_adding_eq_dec_predictive_priors <- rstan::extract(fit_adding_eq_dec_predictive_priors)
 fit_n <- apply(post_fit_adding_eq_dec_predictive_priors$fit, 2, mean)
@@ -469,22 +507,32 @@ eff_1 <- apply(post_fit_adding_eq_dec_predictive_priors$eff_1, 2, mean)
 eff_2 <- apply(post_fit_adding_eq_dec_predictive_priors$eff_2, 2, mean)
 eff_3 <- apply(post_fit_adding_eq_dec_predictive_priors$eff_3, 2, mean)
 eff_4 <- apply(post_fit_adding_eq_dec_predictive_priors$eff_4, 2, mean)
+
+qtls_fit<-posterior_interval(post_fit_adding_eq_dec_predictive_priors$fit)
+qtls_pred<-posterior_interval(post_fit_adding_eq_dec_predictive_priors$y_2)
+qtls_eff_1<-posterior_interval(post_fit_adding_eq_dec_predictive_priors$eff_1)
+qtls_eff_2<-posterior_interval(post_fit_adding_eq_dec_predictive_priors$eff_2)
+qtls_eff_3<-posterior_interval(post_fit_adding_eq_dec_predictive_priors$eff_3)
+qtls_eff_4<-posterior_interval(post_fit_adding_eq_dec_predictive_priors$eff_4)
+
 pred <- data.frame(da_x = append(daily_d$day, seq(239, 300, by = 1)), 
                    da_y = append(daily_d$irr_mean, rep(0, 62)), 
                    gp = append(fit_n, y2_n), 
+                   ci_05 = append(qtls_fit[, 1],qtls_pred[, 1]),
+                   ci_95 = append(qtls_fit[, 2],qtls_pred[, 2]),
                    e_1 = eff_1, 
                    e_2 = eff_2, 
                    e_3 = eff_3, 
                    e_4 = eff_4)
 
-fit_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")
-eff_1_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_1), color = "red")
-eff_2_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_2), color = "red")
-eff_3_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_3), color = "red")
-eff_4_plot <- ggplot(pred, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, e_4), color = "red")
+fit_plot <- ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean)) + geom_line(data = pred,aes(da_x, gp), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4)
+eff_1_plot <-ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred,aes(da_x, e_1), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_1[,1], ymax = qtls_eff_1[,2]), fill = "gray60", alpha = 0.4)
+eff_2_plot <- ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred,aes(da_x, e_2), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_2[,1], ymax = qtls_eff_2[,2]), fill = "gray60", alpha = 0.4)
+eff_3_plot <- ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred,aes(da_x, e_3), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_3[,1], ymax = qtls_eff_3[,2]), fill = "gray60", alpha = 0.4)
+eff_4_plot <- ggplot() + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean))  + geom_line(data = pred,aes(da_x, e_4), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_4[,1], ymax = qtls_eff_4[,2]), fill = "gray60", alpha = 0.4)
 p<-(fit_plot ) / (eff_4_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
 p
-ggsave("gp_eq_ou_per_per_dec_predictive_priors.png", p, width = 10, height = 15,dpi = 180)
+ggsave("gp_eq_ou_per_per_dec_predictive_priors.png", p, width = 15, height = 15,dpi = 180)
 ```
 
 
