@@ -135,7 +135,7 @@ pred_no_hs_u <- data.frame(
   gp = apply(ysim, 1, mean)
 )
 
-ggplot() + geom_point(data = pred_no_hs_u, aes(x = da_x, y = da_y)) + geom_line(data = pred_no_hs_u, aes(x = da_x, y = gp), color = "red") +     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
+ggplot() + geom_point(data = pred_no_hs_u, aes(x = da_x, y = da_y)) + geom_line(data = pred_no_hs_u, aes(x = da_x, y = gp), color = "red") +     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
 ```
 
 # monotonic bounded
@@ -169,7 +169,7 @@ pred_no_hs <- data.frame(
   gp = apply(ysim, 1, mean)
 )
 
-ggplot() + geom_point(data = pred_no_hs, aes(x = da_x, y = da_y)) + geom_line(data = pred_no_hs, aes(x = da_x, y = gp), color = "red") +     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
+ggplot() + geom_point(data = pred_no_hs, aes(x = da_x, y = da_y)) + geom_line(data = pred_no_hs, aes(x = da_x, y = gp), color = "red") +     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
 ```
 
 # HS
@@ -204,7 +204,7 @@ pred_hs_u <- data.frame(
   da_y = y,
   gp = apply(ysim, 1, mean)
 )
-ggplot(pred_hs_u, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")+     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
+ggplot(pred_hs_u, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")+     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
 ```
 
 # monotonic bounded 
@@ -236,7 +236,7 @@ pred_hs <- data.frame(
   da_y = y,
   gp = apply(ysim, 1, mean)
 )
-ggplot(pred_hs, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")+     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
+ggplot(pred_hs, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")+     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
 ```
 
 ```{r}
@@ -249,9 +249,9 @@ line_no_hs <- geom_line(data = pred_no_hs, aes(x = da_x, y = gp), color = "india
 qtls_hs <- apply(sim.model$ysim, 1, quantile, probs = c(0.05, 0.95))
 qtls_no_hs <- apply(sim.model_no_hs$ysim, 1, quantile, probs = c(0.05, 0.95))
 
-ci_hs <- geom_ribbon(aes(x = data_hs$mom_iq, ymin = qtls_hs[1, ], ymax = qtls_hs[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
+ci_hs <- geom_ribbon(aes(x = data_hs$mom_iq, ymin = qtls_hs[1, ], ymax = qtls_hs[2, ]), fill = "gray60", alpha = 0.4)
   
-ci_no_hs <- geom_ribbon(aes(x = data_no_hs$mom_iq, ymin = qtls_no_hs[1, ], ymax = qtls_no_hs[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
+ci_no_hs <- geom_ribbon(aes(x = data_no_hs$mom_iq, ymin = qtls_no_hs[1, ], ymax = qtls_no_hs[2, ]), fill = "gray60", alpha = 0.4)
 
 p1 <- ggplot()  + points  + ci_hs + ci_no_hs + line_hs + line_no_hs
 p1
@@ -286,7 +286,7 @@ points <- data.frame(x = (x), y = (y))
 ymean = apply(ysim, 1, mean)
 lines <- data.frame(x = x_test, y = ymean)
 
-ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
+ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
 ```
 
 ## HS
@@ -320,7 +320,7 @@ points<- data.frame(x = (x),
 ymean = apply(ysim, 1, mean)
 lines <- data.frame(x = x_test, y = ymean)
 
-ggplot( ) + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls[1, ], ymax = qtls[2, ]), colour ="gray90", fill = "gray60", alpha = 0.4)
+ggplot( ) + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
 ```
 
 
