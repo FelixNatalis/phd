@@ -448,4 +448,49 @@ print(m_1)
 save(m_1, file="m_1.RData")
 #load("m_1.RData")
 ```
+```{r}
+# Define time sequence
+t <- append(append(seq(0, 0.4, by = 0.05), data_shorter$mom_iq), seq(0.9, 1, by = 0.05))
+
+# Generate prediction dataset
+x_pred <- lgpr::new_x(data_shorter, t, group_by = "mom_hs", x = "mom_iq")
+#x_pred <- lgpr::new_x(data_shorter, t, group_by = NA, x = "mom_iq")
+
+
+process_predictions <- function(predicted) {
+  # Extract and reshape predictions 
+  x <- as.data.frame(predicted@x)
+  y <- as.data.frame(predicted@h) %>%
+    pivot_longer(cols = everything()) %>%
+    dplyr::select(-name) #%>%   rename(y = value)
+
+  # Combine 
+  data <- cbind(x, y)
+  
+  return(data)
+}
+
+
+# Apply function for predictions for shared effect (f = fixed effect) and person-specific effect (r = random effects)
+pred1 <-lgpr::pred(m_1, x_pred,  verbose = FALSE)
+gp_pred_f <- process_predictions(pred1)
+pred2<- lgpr::pred(m_1, verbose = FALSE)
+gp_pred_r <- process_predictions(pred2)
+```
+
+```{r}
+ggplot(gp_pred_f, aes(x = mom_iq, y = value )) + 
+  geom_smooth(color = project_colors[2], size = 1) +  
+  geom_point(aes(y = value), color = project_colors[3], alpha = 0.7, size = 1.2)
+```
+
+```{r}
+ggplot(gp_pred_r, aes(x = mom_iq, y = value )) + 
+  geom_smooth(color = project_colors[2], size = 1) +  
+  geom_point(aes(y = value), color = project_colors[3], alpha = 0.7, size = 1.2)
+```
+
+```{r}
+#???????????????????????????
+```
 
