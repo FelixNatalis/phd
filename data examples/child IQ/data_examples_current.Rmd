@@ -55,6 +55,7 @@ max_IQ = 160
 range01 <- function(x, ...){(x - min_IQ) / (max_IQ - min_IQ)}
 data$kid_score <- range01(data$kid_score)
 data$mom_iq <- range01(data$mom_iq)
+data$mom_hs <- as.factor(data$mom_hs)
 
 p1<- ggplot(data, aes(mom_iq, kid_score, color = factor(mom_hs))) + geom_point() + geom_smooth()
 p1
@@ -425,7 +426,26 @@ ggsave("pred_no_hs.png", p4, width = 10, height = 6,dpi = 180)
 # TODO compare models
 ```
 
+## LGPR to induce group-based ANOVA
 
 ```{r}
+require("lgpr")
+
+idx <- sample(data_hs$datapoint, 135, replace=FALSE)
+
+data_shorter <- data[-c(idx),] 
+
+m_1 <- lgp(
+  kid_score ~
+    gp(mom_iq) +  zs(mom_hs),
+  data = data_shorter,
+  sample_f = TRUE
+)
+
+summary(m_1)
+
+print(m_1)
+save(m_1, file="m_1.RData")
+#load("m_1.RData")
 ```
 
