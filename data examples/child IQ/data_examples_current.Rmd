@@ -262,7 +262,7 @@ ggsave("constrained_gps.png", p1, width = 10, height = 6,dpi = 180)
 ```{r}
 x <- data_no_hs$mom_iq
 y <- data_no_hs$kid_score
-x_test <- append(seq(0, 0.45, by = 0.05), append(x, seq(0.8, 1, by = 0.05)))
+x_test_no_hs <- append(seq(0, 0.45, by = 0.05), append(x, seq(0.8, 1, by = 0.05)))
 model_no_hs <- create(
   class = "lineqGP",
   x = x,
@@ -274,19 +274,19 @@ model_no_hs$bounds[1, ] <- c(0, 1)
 model_no_hs$varnoise <- 1e-2
 
 sim.model_no_hs <- simulate(model_no_hs,
-                            xtest = x_test,
+                            xtest = x_test_no_hs,
                             nsim = 1e2,
                             seed = 1)
 beep()
 
 ysim <- sim.model_no_hs$ysim
-qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+qtls_pred_no_hs <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
 
 points <- data.frame(x = (x), y = (y))
 ymean = apply(ysim, 1, mean)
-lines <- data.frame(x = x_test, y = ymean)
+lines_pred_no_hs <- data.frame(x = x_test_no_hs, y = ymean)
 
-ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
+ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines_pred_no_hs, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test_no_hs, ymin = qtls_pred_no_hs[1, ], ymax = qtls_pred_no_hs[2, ]), fill = "gray60", alpha = 0.4)
 ```
 
 ## HS
@@ -294,7 +294,7 @@ ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines
 ```{r}
 x <- data_hs$mom_iq
 y <- data_hs$kid_score
-x_test <- append(seq(0, 0.40, by = 0.05),append(x, seq(0.8, 1, by = 0.05)))
+x_test_hs <- append(seq(0, 0.40, by = 0.05),append(x, seq(0.8, 1, by = 0.05)))
 model <- lineqGPR::create(
   class = "lineqGP",
   x = x,
@@ -307,20 +307,116 @@ model$bounds[1, ] <- c(0, 1)
 model$varnoise <- 1e-2
 
 sim.model <- simulate(model,
-                      xtest = x_test,
+                      xtest = x_test_hs,
                       nsim = 1e2,
                       seed = 1)
 beep()
 
 ysim <- sim.model$ysim
-qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+qtls_pred_hs <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
 
 points<- data.frame(x = (x),
   y = (y))
 ymean = apply(ysim, 1, mean)
-lines <- data.frame(x = x_test, y = ymean)
+lines_pred_hs <- data.frame(x = x_test_hs, y = ymean)
 
-ggplot( ) + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
+ggplot( ) + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines_pred_hs, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test_hs, ymin = qtls_pred_hs[1, ], ymax = qtls_pred_hs[2, ]), fill = "gray60", alpha = 0.4)
+```
+# NO HS unconstrained
+```{r}
+x <- data_no_hs$mom_iq
+y <- data_no_hs$kid_score
+x_test <- append(seq(0, 0.45, by = 0.05), append(x, seq(0.8, 1, by = 0.05)))
+model_no_hs_u <- create(
+  class = "lineqGP",
+  x = x,
+  y = y,
+  constrType = c("boundedness"),
+  m = 30
+)
+model_no_hs_u$bounds <- c(-10,10)
+model_no_hs_u$varnoise <- 1e-2
+
+sim.model_no_hs_u <- simulate(model_no_hs_u,
+                            xtest = x_test,
+                            nsim = 1e2,
+                            seed = 1)
+beep()
+
+ysim <- sim.model_no_hs_u$ysim
+qtls_pred_no_hs_u <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
+points <- data.frame(x = (x), y = (y))
+ymean = apply(ysim, 1, mean)
+lines_pred_no_hs_u <- data.frame(x = x_test, y = ymean)
+
+ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines_pred_no_hs_u, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls_pred_no_hs_u[1, ], ymax = qtls_pred_no_hs_u[2, ]), fill = "gray60", alpha = 0.4)
+```
+
+# HS unconstrained
+```{r}
+x <- data_hs$mom_iq
+y <- data_hs$kid_score
+x_test <- append(seq(0, 0.40, by = 0.05),append(x, seq(0.8, 1, by = 0.05)))
+model_hs_u <- create(
+  class = "lineqGP",
+  x = x,
+  y = y,
+  constrType = c("boundedness"),
+  m = 30
+)
+model_hs_u$bounds <- c(-10,10)
+model_hs_u$varnoise <- 1e-2
+
+sim.model_hs_u <- simulate(model_hs_u,
+                            xtest = x_test,
+                            nsim = 1e2,
+                            seed = 1)
+beep()
+
+ysim <- sim.model_hs_u$ysim
+qtls_pred_hs_u <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
+points <- data.frame(x = (x), y = (y))
+ymean = apply(ysim, 1, mean)
+lines_pred_hs_u <- data.frame(x = x_test, y = ymean)
+
+ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines_pred_hs_u, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls_pred_hs_u[1, ], ymax = qtls_pred_hs_u[2, ]), fill = "gray60", alpha = 0.4)
+```
+
+```{r}
+points <- geom_point(data = data, aes(x = (mom_iq), y = (kid_score), color = factor(mom_hs)))
+
+line_hs<- geom_line(data = lines_pred_hs, aes(x = x, y = y), color = "darkslategray4", linewidth = 1)
+
+line_no_hs <- geom_line(data = lines_pred_no_hs, aes(x = x, y = y), color = "indianred3", linewidth = 1)
+
+line_hs_u<- geom_line(data = lines_pred_hs_u, aes(x = x, y = y), color = "darkseagreen4", linewidth = 1)
+
+line_no_hs_u <- geom_line(data = lines_pred_no_hs_u, aes(x = x, y = y), color = "orange4", linewidth = 1)
+
+ci_hs <- geom_ribbon(aes(x = x_test_hs, ymin = qtls_pred_hs[1, ], ymax = qtls_pred_hs[2, ]), fill = "lightskyblue", alpha = 0.4)
+  
+ci_no_hs <- geom_ribbon(aes(x = x_test_no_hs, ymin = qtls_pred_no_hs[1, ], ymax = qtls_pred_no_hs[2, ]), fill = "mistyrose2", alpha = 0.4)
+
+ci_hs_u <- geom_ribbon(aes(x = x_test_hs, ymin = qtls_pred_hs_u[1, ], ymax = qtls_pred_hs_u[2, ]), fill = "palegreen2", alpha = 0.3)
+  
+ci_no_hs_u <- geom_ribbon(aes(x = x_test_no_hs, ymin = qtls_pred_no_hs_u[1, ], ymax = qtls_pred_no_hs_u[2, ]), fill = "lightyellow2", alpha = 0.3)
+
+p1 <- ggplot()  + points + ci_hs + ci_no_hs + line_hs + line_no_hs 
+p1
+
+p2 <- ggplot()  + points  + ci_hs_u + ci_no_hs_u + line_hs_u + line_no_hs_u
+p2
+
+
+p3 <- ggplot()  + geom_point(data = data_hs, aes(x = (mom_iq), y = (kid_score)), color = "darkslategray3")  + ci_hs + ci_hs_u + line_hs + line_hs_u
+p3
+
+p4 <- ggplot()  + geom_point(data = data_no_hs, aes(x = (mom_iq), y = (kid_score)), color = "indianred2")  + ci_no_hs + ci_no_hs_u + line_no_hs + line_no_hs_u
+p4
+
+ggsave("pred_no_hs.png", p4, width = 10, height = 6,dpi = 180)
 ```
 
 
