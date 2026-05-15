@@ -1009,11 +1009,11 @@ draws_summary <- function(mat, iq_grid, group = NULL) {
   df
 }
 
-df_shared <- draws_summary(pred_share@f_comp[[1]], iq_grid)
+df_shared <- draws_summary(pred_share@f_comp_mean[[1]], iq_grid)
 
 
-df_hs    <- draws_summary(pred_hs@f,   iq_grid, group = 1)
-df_nohs  <- draws_summary(pred_nohs@f, iq_grid, group = 0)
+df_hs    <- draws_summary(pred_hs@f_mean,   iq_grid, group = 1)
+df_nohs  <- draws_summary(pred_nohs@f_mean, iq_grid, group = 0)
 
 df_groups <- bind_rows(df_hs, df_nohs) |>
   mutate(mom_hs = factor(mom_hs, levels = c(0, 1)))
@@ -1123,7 +1123,7 @@ plot_components(m_3,
   pred = p,
   group_by = "mom_hs",
   t_name  = "mom_iq",
-  color_by = c("mom_hs", "mom_hs", "mom_hs", "mom_hs"),
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
 #  ylim = c(-0.5, 1),
   ncol = 2
 )
@@ -1131,7 +1131,7 @@ plot_components(m_3,
 plot_components(m_3,
   group_by = "mom_hs",
   t_name  = "mom_iq",
-  color_by = c("mom_hs", "mom_hs", "mom_hs", "mom_hs"),
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
 #  ylim = c(-0.5, 1),
   ncol = 2
 )
