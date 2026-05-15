@@ -46,8 +46,8 @@ set.seed(123)
 
 
 ```{r}
-data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/child IQ/data/kid_iq.csv")
-#data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/child IQ/data/kid_iq.csv")
+#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/child IQ/data/kid_iq.csv")
+data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/child IQ/data/kid_iq.csv")
 names(data)[names(data)=="...1"] <- "datapoint"
 
 min_IQ = 0
@@ -699,6 +699,31 @@ p_m_1<- ggplot() +
 p_m_1
 ggsave("lgpr_ANOVA_m_1.png", p_m_1, width = 10, height = 6,dpi = 180)
 ```
+```{r}
+t <- seq(0, 1, by = 0.01)
+x_pred <- new_x(data_shorter, t, x = "mom_iq", group_by = "mom_hs")
+
+p <- pred(m_1, x_pred, reduce = mean)
+
+plot_components(m_1,
+  pred = p,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
+
+plot_components(m_1,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
+
+# no_err??
+```
 
 ```{r}
 
@@ -918,5 +943,197 @@ param_plot<- ggplot(df, aes(x = value, fill = src, colour = src)) +
 
 param_plot
 ggsave("param_plot_lgpr_ANOVA_m_2.png", param_plot, width = 10, height = 6,dpi = 180)
+```
+
+## LGPR with a more complicated model
+```{r}
+set.seed(123)
+# priors
+prior <- list(
+  alpha = igam(2, 1, square = TRUE),# log_normal(0, 1), 
+  ell = igam(2, 1, square = FALSE)
+)
+
+idx <- sample(data_hs$datapoint, 135, replace=FALSE)
+
+data_shorter <- data[-c(idx),] 
+
+# Fit model
+m_3 <- lgp(
+  kid_score ~
+    gp(mom_iq) +  gp(mom_iq)*zs(mom_hs),
+  data = data_shorter,
+ # prior = prior,
+  sample_f = FALSE
+)
+
+print(m_3)
+save(m_3, file="m_3.RData")
+#load("m_3.RData")
+```
+```{r}
+
+y_mean <- mean(data_shorter$kid_score)
+y_sd   <- sd(data_shorter$kid_score)
+
+unscale <- function(x) x  + y_mean 
+
+iq_grid <- seq(min(data_shorter$mom_iq), max(data_shorter$mom_iq), length.out = 120)
+
+x_hs <- data.frame(
+  mom_iq = iq_grid,
+  mom_hs = factor(1,    levels = levels(data_shorter$mom_hs))
+)
+x_nohs <- data.frame(
+  mom_iq = iq_grid,
+  mom_hs = factor(0, levels = levels(data_shorter$mom_hs))
+)
+x_shared <- x_hs   
+
+n_draws <- nrow(get_draws(m_3))  
+idx     <- sample(n_draws, min(200, n_draws))
+ 
+pred_hs    <- pred(m_3, x = x_hs,     draws = idx, verbose = FALSE)
+pred_nohs  <- pred(m_3, x = x_nohs,   draws = idx, verbose = FALSE)
+pred_share <- pred(m_3, x = x_shared, draws = idx, verbose = FALSE)
+
+draws_summary <- function(mat, iq_grid, group = NULL) {
+#  mat <- unscale(mat)
+  df <- tibble(
+    mom_iq = iq_grid,
+    mean   = colMeans(mat),
+    lo     = apply(mat, 2, quantile, 0.025),
+    hi     = apply(mat, 2, quantile, 0.975)
+  )
+  if (!is.null(group)) df$mom_hs <- group
+  df
+}
+
+df_shared <- draws_summary(pred_share@f_comp[[1]], iq_grid)
+
+
+df_hs    <- draws_summary(pred_hs@f,   iq_grid, group = 1)
+df_nohs  <- draws_summary(pred_nohs@f, iq_grid, group = 0)
+
+df_groups <- bind_rows(df_hs, df_nohs) |>
+  mutate(mom_hs = factor(mom_hs, levels = c(0, 1)))
+
+
+p_m_3<- ggplot() +
+  # 95% CI ribbons for group curves
+  geom_ribbon(
+    data = df_groups,
+    aes(x = mom_iq, ymin = lo, ymax = hi, fill = mom_hs),
+    alpha = 0.18
+  ) +
+  # Group-specific total curves: f = gp(mom_iq) + zs(mom_hs)
+  geom_line(
+    data = df_groups,
+    aes(x = mom_iq, y = mean, colour = mom_hs, group = mom_hs),
+    linewidth = 0.85
+  ) +
+  # Shared trend: gp(mom_iq) only — dashed red
+  geom_line(
+    data      = df_shared,
+    aes(x = mom_iq, y = mean),
+    colour    = "firebrick4",
+    linewidth = 0.9,
+    linetype  = "dashed"
+  ) +
+  # Raw data
+  geom_point(
+    data  = data_shorter,
+    aes(x = mom_iq, y = kid_score, colour = mom_hs),
+    alpha = 0.4, size = 1.4
+  ) +
+ # scale_colour_manual(values = pal_groups, name = "Mother HS") +
+  #scale_fill_manual(values   = pal_groups, name = "Mother HS") +
+  labs(
+    x        = "Mother's IQ",
+    y        = "Child IQ score",
+    title    = "Functional ANOVA GP decomposition",
+    subtitle = "Dashed red = shared gp(mom_iq); lines = group totals [shared + zs offset]; ribbon = 95% CI"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "bottom")
+p_m_3
+ggsave("lgpr_ANOVA_m_3.png", p_m_3, width = 10, height = 6,dpi = 180)
+
+
+# --- Extract posterior draws ---
+post_mat <- get_draws(m_3)                         # num_draws x num_params matrix
+post     <- post_mat[, grepl("^alpha|^ell|^sigma", colnames(post_mat)), drop = FALSE]
+post     <- as.data.frame(post)
+
+n <- nrow(post)
+
+# --- Prior draws (defaults: alpha ~ half-t(20), ell ~ log-normal(0,1), sigma^2 ~ inv-gamma(2,1)) ---
+prior_df <- data.frame(
+  `alpha[1]` = abs(rt(n, df = 20)),
+  `alpha[2]` = abs(rt(n, df = 20)),
+  `ell[1]`   = rlnorm(n, 0, 1),
+  `ell[2]`   = rlnorm(n, 0, 1),
+  `sigma[1]` = sqrt(1 / rgamma(n, shape = 2, rate = 1)),
+  check.names = FALSE
+)
+
+# --- Combine and tidy ---
+post_long  <- post  |> mutate(src = "posterior") |> pivot_longer(-src)
+prior_long <- prior_df |> mutate(src = "prior")   |> pivot_longer(-src)
+
+df <- bind_rows(post_long, prior_long) |>
+  mutate(
+    src  = factor(src, levels = c("prior", "posterior")),
+    name = recode(name,
+      `alpha[1]` = "a[1]",
+      `alpha[2]` = "a[2]",
+      `ell[1]`   = "l[1]",
+      `ell[2]`   = "l[2]",
+      `sigma[1]` = "σ"
+    )
+  )
+
+# Trim extreme prior tails for readability
+df <- df |>
+  group_by(name) |>
+  mutate(value = pmin(value, quantile(value[src == "prior"], 0.995))) |>
+  ungroup()
+
+param_plot<- ggplot(df, aes(x = value, fill = src, colour = src)) +
+  geom_density(alpha = 0.4, linewidth = 0.5) +
+  facet_wrap(~name, scales = "free", labeller = label_parsed) +
+  scale_fill_manual(values   = c(prior = "steelblue", posterior = "firebrick4")) +
+  scale_colour_manual(values = c(prior = "steelblue", posterior = "firebrick4")) +
+  labs(x = NULL, y = "Density", fill = NULL, colour = NULL,
+       title = "Prior vs posterior distributions") +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "bottom", panel.grid.minor = element_blank())
+
+param_plot
+ggsave("param_plot_lgpr_ANOVA_m_3.png", param_plot, width = 10, height = 6,dpi = 180)
+```
+
+```{r}
+t <- seq(0, 1, by = 0.01)
+x_pred <- new_x(data_shorter, t, x = "mom_iq", group_by = "mom_hs")
+
+p <- pred(m_3, x_pred, reduce = mean)
+
+plot_components(m_3,
+  pred = p,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
+
+plot_components(m_3,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
 ```
 
