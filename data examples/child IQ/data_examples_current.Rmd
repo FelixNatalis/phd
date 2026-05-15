@@ -945,6 +945,31 @@ param_plot
 ggsave("param_plot_lgpr_ANOVA_m_2.png", param_plot, width = 10, height = 6,dpi = 180)
 ```
 
+```{r}
+t <- seq(0, 1, by = 0.01)
+x_pred <- new_x(data_shorter, t, x = "mom_iq", group_by = "mom_hs")
+
+p <- pred(m_2, x_pred, reduce = mean)
+
+plot_components(m_2,
+  pred = p,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
+
+plot_components(m_2,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
+```
+
+
 ## LGPR with a more complicated model
 ```{r}
 set.seed(123)
