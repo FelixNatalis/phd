@@ -1,0 +1,121 @@
+```{r}
+library(lgpr)
+library(stringr)
+library(reshape2)
+library(tidyr)
+library(beepr)      
+library(tidyverse)
+library(tictoc)
+mytoc <- \() {
+  toc(func.toc = \(tic, toc, msg) {
+    sprintf("%s took %s sec", msg, as.character(signif(toc - tic, 2)))
+  })}
+library(posterior)
+options(pillar.neg = FALSE,
+        pillar.subtle = FALSE,
+        pillar.sigfig = 2)
+library(tinytable)
+options(tinytable_format_num_fmt = "significant_cell",
+        tinytable_format_digits = 2,
+        tinytable_tt_digits = 2)
+library(loo)
+library(bayesplot)
+theme_set(bayesplot::theme_default(base_family = "sans"))
+library(ggdist)
+library(patchwork)
+library(ggrepel)
+library(RColorBrewer)
+set1 <- brewer.pal(7, "Set1")
+Sys.setlocale("LC_TIME", "en_GB.utf8")
+
+library(dplyr)
+library(ggplot2)
+
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+set.seed(123)
+```
+
+
+```{r}
+load(file = "./data/wido.RData")
+# Plot the average smoothed change in original values on original scale (1 to 7)
+ggplot() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  labs(x = "Months from Widowhood", y = "Life Satisfaction Original") +
+  scale_y_continuous(breaks = seq(1, 7, by = 1), limits = c(1, 7)) +
+  scale_x_continuous(breaks = seq(-180, 180, by = 30), limits = c(-180, 180)) +
+  theme(legend.position = "none") +
+  theme(aspect.ratio=0.9) +
+geom_smooth(data = wido, aes(x=mnths, y=lifesatisfaction)) +
+  ggtitle("Average Life Satisfaction Change On Original Scale") +
+  theme(plot.title = element_text(size = 13, face = "bold")) 
+
+ggplot() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  labs(x = "Months from Widowhood", y = "Life Satisfaction Original") +
+  scale_y_continuous(breaks = seq(1, 7, by = 1), limits = c(1, 7)) +
+  scale_x_continuous(breaks = seq(-180, 180, by = 30), limits = c(-180, 180)) +
+  theme(legend.position = "none") +
+  theme(aspect.ratio=0.9) +
+geom_line(data = wido, aes(x=mnths, y=lifesatisfaction, group = id), alpha= 0.1) +
+  ggtitle("Average Life Satisfaction Change On Original Scale") +
+  theme(plot.title = element_text(size = 13, face = "bold")) +
+  geom_line(data = wido, aes(x=mnths, y=sat_st, group = id), alpha= 0.1) +
+  ggtitle("Average Life Satisfaction Change On Original Scale") +
+  theme(plot.title = element_text(size = 13, face = "bold")) +
+  geom_line(data = wido, aes(x = mnths, y = m_lifesat_per_mnth), color = "red")
+```
+```{r}
+wido <- wido %>%
+  mutate(
+    sat_st = (lifesatisfaction - 1)/(7-1)
+  )
+
+```
+
+```{r}
+num_draws <- 300
+mu_wrp <- -0.7
+sigma_wrp <- 0.3
+r <- range(wido$mnths, na.rm = TRUE)
+
+# Define prior for lgp()
+my_prior <- list(wrp = log_normal(mu_wrp, sigma_wrp))
+
+# Prior draws
+wrp_draws <- stats::rlnorm(num_draws, mu_wrp, sigma_wrp)
+
+# Plot corresponding input warping functions
+# - this function is not exported from lgpr so we need to use triple colons :::
+# - alpha here is line opacity, not a GP parameter
+lgpr:::plot_inputwarp(wrp_draws, seq(r[1], r[2], by = 1), alpha = 0.1)
+
+```
+
+```{r}
+prior <- list(
+  alpha = log_normal(0, 1), 
+  ell = log_normal(0, 1),
+  wrp = log_normal(-0.7, 0.9)
+)
+
+# For reproducibility
+set.seed(123)
+
+# Fit model
+gp_1 <- lgp(lifesatisfaction ~ gp_ns(mnths) + gp_ns(mnths) * zs(id), data = wido, prior = prior, sample_f = TRUE)
+
+print(gp_1)
+save(gp_1, file="gp_1.RData")
+```
+
+```{r}
+gp_2 <- lgp(lifesatisfaction ~ gp_ns(mnths) + zs(id), data = wido, prior = prior, sample_f = TRUE)
+print(gp_2)
+save(gp_2, file="gp_2.RData")
+```
+
