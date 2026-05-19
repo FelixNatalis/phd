@@ -136,7 +136,7 @@ idx_1 <- counts  %>%
   idx <- sample(idx_1$id, 20, replace=FALSE)
   
 data_shorter <-wido %>%
-  filter(id %in% idx)
+  filter(id %in% idx) %>% filter(id != 851968)
 nrow(data_shorter)
 
 mnth <- data_shorter %>%
@@ -161,6 +161,8 @@ p2
 
 save(data_shorter, file = "data_shorter.RData")
 ```
+
+
 
 ```{r}
 num_draws <- 300
