@@ -72,52 +72,7 @@ p2
 ggsave("trajectories.png", p2, width = 10, height = 6,dpi = 180)
 ggsave("smooth.png", p1, width = 10, height = 6,dpi = 180)
 ```
-```{r}
-# not used 
-set.seed(20)
 
-counts_by_mnth<- wido %>%
-  group_by(mnths) %>%
-  summarise(
-        n   = n(),
-    .groups   = "drop"
-  )
-
-counts <- wido %>%
-  group_by(id) %>%
-  summarise(
-        n   = n(),
-        sd = sd(lifesatisfaction),
-    .groups   = "drop"
-  )
-
-idx_1 <- ( counts  %>%
-  filter(n >= 15) %>% 
-  arrange(desc(sd)) )[1:20,]
-
-data_shorter <-wido %>%
-  filter(id %in% idx_1$id)
-nrow(data_shorter)
-
-mnth <- data_shorter %>%
-  group_by(mnths) %>%
-  summarise(
-    sat_mean = mean(lifesatisfaction),
-        n_beeps   = n(),
-    .groups   = "drop"
-  )
-
-
-p2<-ggplot() +
-  labs(x = "Months from Widowhood", y = "Life Satisfaction Original") +
-  geom_line(data = data_shorter, aes(x=mnths, y=lifesatisfaction, group = id, color = factor(id)), alpha= 0.2) +
-  ggtitle("Average Life Satisfaction Change On Original Scale") +
-  theme(plot.title = element_text(size = 13, face = "bold")) + 
-  geom_point(data = data_shorter, aes(x=mnths, y=lifesatisfaction, group = id, color = factor(id)), alpha= 0.2)+
-  geom_line(data = mnth, aes(x = mnths, y = sat_mean), color = "red")
-
-p2
-```
 ```{r}
 counts <- wido %>%
   group_by(id) %>%
@@ -160,6 +115,7 @@ p2<-ggplot() +
 p2
 
 save(data_shorter, file = "data_shorter.RData")
+load(file = "./data/data_shorter.RData")
 ```
 
 
@@ -182,6 +138,104 @@ wrp_draws <- stats::rlnorm(num_draws, mu_wrp, sigma_wrp)
 lgpr:::plot_inputwarp(wrp_draws, seq(r[1], r[2], by = 1), alpha = 0.1)
 
 ```
+
+```{r}
+# Fit model
+gp_0 <- lgp(lifesatisfaction ~ gp_ns(mnths) + zs(id), data = data_shorter, sample_f = TRUE)
+
+print(gp_0)
+save(gp_0, file="gp_0.RData")
+```
+
+```{r}
+# Create function to wrangle the predictions to the correct format
+process_predictions <- function(predicted) {
+  # Extract and reshape predictions 
+  x <- as.data.frame(predicted@x)
+  y <- as.data.frame(predicted@h) %>%
+    pivot_longer(cols = everything()) %>%
+    dplyr::select(-name) %>%
+    rename(y = value)
+
+  # Combine 
+  data <- cbind(x, y)
+  
+  return(data)
+}
+
+set.seed(123)
+
+# Filter the data to include only the randomly selected participants
+gp_pred_r_rsample <- data_shorter
+
+# Define time sequence
+t <- seq(-178, 179, by = 1)
+
+# Generate prediction dataset
+x_pred <- new_x(data_shorter, t, group_by = NA, x = "mnths")
+
+# Apply function for predictions for shared effect (f = fixed effect) and person-specific effect (r = random effects)
+p_1<-pred(gp_0, x_pred, reduce = mean, verbose = FALSE)
+gp_pred_f <- process_predictions(p_1)
+gp_pred_r <- process_predictions(pred(gp_0, reduce = mean, verbose = FALSE))
+
+
+draws_summary <- function(mat, grid) {
+  df <- tibble(
+    mnths = grid,
+    mean   = colMeans(mat),
+    lo     = apply(mat, 2, quantile, 0.025),
+    hi     = apply(mat, 2, quantile, 0.975)
+  )
+  
+  df
+}
+
+
+n_draws <- nrow(get_draws(gp_0))
+idx     <- sample(n_draws, min(200, n_draws))
+
+pred_ci    <- pred(gp_0, x_pred, draws = idx, verbose = FALSE)
+df_ci    <- draws_summary(pred_ci@h, t)
+
+
+p_0 <- ggplot() +
+  geom_ribbon(data = df_ci,
+              aes(x = mnths, ymin = lo, ymax = hi),
+              alpha = 0.18) +
+  
+  geom_line(
+    data = gp_pred_r_rsample,
+    aes(mnths, y = lifesatisfaction, group = id),
+    color = "grey70",
+    linewidth = 0.4
+  ) +
+  geom_line(
+    data = gp_pred_f,
+    aes(x = mnths, y = y),
+    color = "firebrick4",
+    linewidth = 1
+  ) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+p_0
+
+ggsave("gp_0.png",
+       p_0,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+
+
+```{r}
+comp_0<-plot_components(gp_0,
+  group_by = NA,
+  t_name  = "mnths",
+  ncol = 2
+)
+```
+
 
 ```{r}
 prior <- list(
