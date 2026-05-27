@@ -544,7 +544,164 @@ load(  file = "stan/fits/fit_final_dec_predictive_priors_3.RData")
 
 
 
+# --------------------------less data------------------------------------------------------------------------------------------------------------
 
+```{r}
+daily_d
+
+set.seed(124)
+idx <- sample(unique(daily_d$timestamp), 119, replace=FALSE)
+  
+daily_d_shorter <-daily_d %>%
+  filter(timestamp %in% idx) 
+nrow(daily_d_shorter)
+
+p1<-ggplot()+geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean)) + geom_point(aes(x = daily_d$day, y = daily_d$irr_mean), alpha = 0.2)
+ggsave("subset.png", p1, width = 15, height = 15,dpi = 180)
+```
+
+```{r}
+
+stan_data <- list(
+  N_1 = nrow(daily_d_shorter),
+  y_1 = daily_d_shorter$irr_mean,
+  x_1 = daily_d_shorter$day,
+  N_2 = 62,
+  x_2 = seq(239, 300, by = 1)
+)
+
+fit_less_inf <- stan(
+  file = "C:/Users/margo/stan/gp_eq_OU_periodic_weekly_monthly_decomposed_predictive_priors.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit_less_inf,
+  pars = c("length_scale_k_1","variance_k_1", "length_scale_k_2","variance_k_2","length_scale_k_3","variance_k_3","length_scale_k_4","variance_k_4","sigma","intercept")
+)
+
+save(
+  fit_less_inf,
+  file = "fit_less_inf.RData"
+)
+
+#load("fit_less_inf.RData")
+
+post_fit_less_inf <- rstan::extract(fit_less_inf)
+fit_n <- apply(post_fit_less_inf$fit, 2, mean)
+y2_n <- apply(post_fit_less_inf$y_2, 2, mean)
+eff_1 <- apply(post_fit_less_inf$eff_1, 2, mean)
+eff_2 <- apply(post_fit_less_inf$eff_2, 2, mean)
+eff_3 <- apply(post_fit_less_inf$eff_3, 2, mean)
+eff_4 <- apply(post_fit_less_inf$eff_4, 2, mean)
+
+qtls_fit<-posterior_interval(post_fit_less_inf$fit)
+qtls_pred<-posterior_interval(post_fit_less_inf$y_2)
+qtls_eff_1<-posterior_interval(post_fit_less_inf$eff_1)
+qtls_eff_2<-posterior_interval(post_fit_less_inf$eff_2)
+qtls_eff_3<-posterior_interval(post_fit_less_inf$eff_3)
+qtls_eff_4<-posterior_interval(post_fit_less_inf$eff_4)
+
+pred <- data.frame(da_x = append(daily_d_shorter$day, seq(239, 300, by = 1)), 
+                   da_y = append(daily_d_shorter$irr_mean, rep(0, 62)), 
+                   gp = append(fit_n, y2_n), 
+                   ci_05 = append(qtls_fit[, 1],qtls_pred[, 1]),
+                   ci_95 = append(qtls_fit[, 2],qtls_pred[, 2]),
+                   e_1 = eff_1, 
+                   e_2 = eff_2, 
+                   e_3 = eff_3, 
+                   e_4 = eff_4)
+
+fit_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean)) + geom_line(data = pred,aes(da_x, gp), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4)
+eff_1_plot <-ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_1), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_1[,1], ymax = qtls_eff_1[,2]), fill = "gray60", alpha = 0.4)
+eff_2_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_2), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_2[,1], ymax = qtls_eff_2[,2]), fill = "gray60", alpha = 0.4)
+eff_3_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_3), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_3[,1], ymax = qtls_eff_3[,2]), fill = "gray60", alpha = 0.4)
+eff_4_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_4), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_4[,1], ymax = qtls_eff_4[,2]), fill = "gray60", alpha = 0.4)
+p<-(fit_plot ) / (eff_4_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
+p
+ggsave("gp_less_inf.png", p, width = 15, height = 15,dpi = 180)
+
+
+```
+
+# less data and noninformative priors
+
+```{r}
+stan_data <- list(
+  N_1 = nrow(daily_d_shorter),
+  y_1 = daily_d_shorter$irr_mean,
+  x_1 = daily_d_shorter$day,
+  N_2 = 62,
+  x_2 = seq(239, 300, by = 1)
+)
+
+fit_less <- stan(
+  file = "C:/Users/margo/stan/gp_eq_OU_periodic_weekly_monthly_decomposed_predictive_noninformative.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 500,
+  warmup = 200,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit_less,
+  pars = c("length_scale_k_1","variance_k_1", "length_scale_k_2","variance_k_2","length_scale_k_3","variance_k_3","length_scale_k_4","variance_k_4","sigma","intercept")
+)
+
+save(
+  fit_less,
+  file = "fit_less.RData"
+)
+
+#load("fit_less.RData")
+
+post_fit_less <- rstan::extract(fit_less)
+fit_n <- apply(post_fit_less$fit, 2, mean)
+y2_n <- apply(post_fit_less$y_2, 2, mean)
+eff_1 <- apply(post_fit_less$eff_1, 2, mean)
+eff_2 <- apply(post_fit_less$eff_2, 2, mean)
+eff_3 <- apply(post_fit_less$eff_3, 2, mean)
+eff_4 <- apply(post_fit_less$eff_4, 2, mean)
+
+qtls_fit<-posterior_interval(post_fit_less$fit)
+qtls_pred<-posterior_interval(post_fit_less$y_2)
+qtls_eff_1<-posterior_interval(post_fit_less$eff_1)
+qtls_eff_2<-posterior_interval(post_fit_less$eff_2)
+qtls_eff_3<-posterior_interval(post_fit_less$eff_3)
+qtls_eff_4<-posterior_interval(post_fit_less$eff_4)
+
+pred <- data.frame(da_x = append(daily_d_shorter$day, seq(239, 300, by = 1)), 
+                   da_y = append(daily_d_shorter$irr_mean, rep(0, 62)), 
+                   gp = append(fit_n, y2_n), 
+                   ci_05 = append(qtls_fit[, 1],qtls_pred[, 1]),
+                   ci_95 = append(qtls_fit[, 2],qtls_pred[, 2]),
+                   e_1 = eff_1, 
+                   e_2 = eff_2, 
+                   e_3 = eff_3, 
+                   e_4 = eff_4)
+
+fit_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean)) + geom_line(data = pred,aes(da_x, gp), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4)
+eff_1_plot <-ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_1), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_1[,1], ymax = qtls_eff_1[,2]), fill = "gray60", alpha = 0.4)
+eff_2_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_2), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_2[,1], ymax = qtls_eff_2[,2]), fill = "gray60", alpha = 0.4)
+eff_3_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_3), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_3[,1], ymax = qtls_eff_3[,2]), fill = "gray60", alpha = 0.4)
+eff_4_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_4), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_4[,1], ymax = qtls_eff_4[,2]), fill = "gray60", alpha = 0.4)
+p<-(fit_plot ) / (eff_4_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
+p
+ggsave("gp_less.png", p, width = 15, height = 15,dpi = 180)
+
+
+```
 
 
 

@@ -396,7 +396,7 @@ ggsave("data_even_shorter.png",
        dpi = 180)
 ```
 
-
+# less data + good model + informative prior
 ```{r}
 
 prior <- list(
@@ -452,6 +452,59 @@ pl_3
 
 ggsave("gp_3.png",
        pl_3,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+# less data + good model but with default priors
+```{r}
+
+gp_4 <- lgp(lifesatisfaction ~ gp_ns(mnths) + zs(id), data = data_even_shorter ,sample_f = TRUE)
+print(gp_4)
+save(gp_4, file="gp_4.RData")
+
+
+#load(file="gp_4.RData")
+plot_components(gp_4,
+  group_by = NA,
+  t_name  = "mnths",
+  ncol = 2
+)
+
+p_4<-pred(gp_4, x_pred, reduce = mean, verbose = FALSE)
+gp_pred_f <- process_predictions(p_4)
+gp_pred_r <- process_predictions(pred(gp_4, reduce = mean, verbose = FALSE))
+
+n_draws <- nrow(get_draws(gp_4))
+idx     <- sample(n_draws, min(200, n_draws))
+
+pred_ci    <- pred(gp_4, x_pred, draws = idx, verbose = FALSE)
+df_ci    <- draws_summary(pred_ci@h, t)
+
+
+pl_4 <- ggplot() +
+  geom_ribbon(data = df_ci,
+              aes(x = mnths, ymin = lo, ymax = hi),
+              alpha = 0.18) +
+  
+  geom_line(
+    data = data_even_shorter,
+    aes(mnths, y = lifesatisfaction, group = id),
+    color = "grey70",
+    linewidth = 0.4
+  ) +
+  geom_line(
+    data = gp_pred_f,
+    aes(x = mnths, y = y),
+    color = "firebrick4",
+    linewidth = 1
+  ) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+pl_4
+
+ggsave("gp_4.png",
+       pl_4,
        width = 10,
        height = 6,
        dpi = 180)
