@@ -252,11 +252,208 @@ gp_1 <- lgp(lifesatisfaction ~ gp_ns(mnths) + gp_ns(mnths) * zs(id), data = data
 
 print(gp_1)
 save(gp_1, file="gp_1.RData")
+
+load(file="gp_1.RData")
+plot_components(gp_1,
+  group_by = NA,
+  t_name  = "mnths",
+  ncol = 2
+)
 ```
+
+```{r}
+p_1<-pred(gp_1, x_pred, reduce = mean, verbose = FALSE)
+gp_pred_f <- process_predictions(p_1)
+gp_pred_r <- process_predictions(pred(gp_1, reduce = mean, verbose = FALSE))
+
+n_draws <- nrow(get_draws(gp_1))
+idx     <- sample(n_draws, min(200, n_draws))
+
+pred_ci    <- pred(gp_1, x_pred, draws = idx, verbose = FALSE)
+df_ci    <- draws_summary(pred_ci@h, t)
+
+
+pl_1 <- ggplot() +
+  geom_ribbon(data = df_ci,
+              aes(x = mnths, ymin = lo, ymax = hi),
+              alpha = 0.18) +
+  
+  geom_line(
+    data = gp_pred_r_rsample,
+    aes(mnths, y = lifesatisfaction, group = id),
+    color = "grey70",
+    linewidth = 0.4
+  ) +
+  geom_line(
+    data = gp_pred_f,
+    aes(x = mnths, y = y),
+    color = "firebrick4",
+    linewidth = 1
+  ) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+pl_1
+
+ggsave("gp_1.png",
+       pl_1,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+
 
 ```{r}
 gp_2 <- lgp(lifesatisfaction ~ gp_ns(mnths) + zs(id), data = data_shorter, prior = prior, sample_f = TRUE)
 print(gp_2)
 save(gp_2, file="gp_2.RData")
+
+
+load(file="gp_2.RData")
+plot_components(gp_2,
+  group_by = NA,
+  t_name  = "mnths",
+  ncol = 2
+)
+```
+```{r}
+p_2<-pred(gp_2, x_pred, reduce = mean, verbose = FALSE)
+gp_pred_f <- process_predictions(p_2)
+gp_pred_r <- process_predictions(pred(gp_2, reduce = mean, verbose = FALSE))
+
+n_draws <- nrow(get_draws(gp_2))
+idx     <- sample(n_draws, min(200, n_draws))
+
+pred_ci    <- pred(gp_2, x_pred, draws = idx, verbose = FALSE)
+df_ci    <- draws_summary(pred_ci@h, t)
+
+
+pl_2 <- ggplot() +
+  geom_ribbon(data = df_ci,
+              aes(x = mnths, ymin = lo, ymax = hi),
+              alpha = 0.18) +
+  
+  geom_line(
+    data = gp_pred_r_rsample,
+    aes(mnths, y = lifesatisfaction, group = id),
+    color = "grey70",
+    linewidth = 0.4
+  ) +
+  geom_line(
+    data = gp_pred_f,
+    aes(x = mnths, y = y),
+    color = "firebrick4",
+    linewidth = 1
+  ) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+pl_2
+
+ggsave("gp_2.png",
+       pl_2,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+
+
+# -------------------------------------------------------------------LESS DATA
+
+```{r}
+set.seed(124)
+idx <- sample(unique(data_shorter$id), 10, replace=FALSE)
+  
+data_even_shorter <-data_shorter %>%
+  filter(id %in% idx) 
+nrow(data_even_shorter)
+
+mnth <- data_even_shorter %>%
+  group_by(mnths) %>%
+  summarise(
+    sat_mean = mean(lifesatisfaction),
+        n_beeps   = n(),
+    .groups   = "drop"
+  )
+
+
+p2<-ggplot() +
+  labs(x = "Months from Widowhood", y = "Life Satisfaction Original") +
+  geom_line(data = data_even_shorter, aes(x=mnths, y=lifesatisfaction, group = id, color = factor(id)), alpha= 0.2) +
+  ggtitle("Average Life Satisfaction Change On Original Scale") +
+  theme(plot.title = element_text(size = 13, face = "bold")) + 
+  geom_point(data = data_even_shorter, aes(x=mnths, y=lifesatisfaction, group = id, color = factor(id)), alpha= 0.2)+
+  #geom_line(data = mnth, aes(x = mnths, y = sat_mean), color = "red")+
+  geom_smooth(data = data_even_shorter, aes(x = mnths, y=lifesatisfaction))
+
+p2
+
+save(data_even_shorter, file = "data_even_shorter.RData")
+#load(file = "./data/data_shorter.RData")
+
+ggsave("data_even_shorter.png",
+       p2,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+
+
+```{r}
+
+prior <- list(
+  alpha = student_t(1, square = TRUE), #log_normal(0, 1), 
+  ell = igam(1, 4), #log_normal(0, 1),
+  wrp = log_normal(-0.5, 1) 
+)
+
+
+gp_3 <- lgp(lifesatisfaction ~ gp_ns(mnths) + zs(id), data = data_even_shorter, prior = prior ,sample_f = TRUE)
+print(gp_3)
+save(gp_3, file="gp_3.RData")
+
+
+#load(file="gp_3.RData")
+plot_components(gp_3,
+  group_by = NA,
+  t_name  = "mnths",
+  ncol = 2
+)
+
+p_3<-pred(gp_3, x_pred, reduce = mean, verbose = FALSE)
+gp_pred_f <- process_predictions(p_3)
+gp_pred_r <- process_predictions(pred(gp_3, reduce = mean, verbose = FALSE))
+
+n_draws <- nrow(get_draws(gp_3))
+idx     <- sample(n_draws, min(200, n_draws))
+
+pred_ci    <- pred(gp_3, x_pred, draws = idx, verbose = FALSE)
+df_ci    <- draws_summary(pred_ci@h, t)
+
+
+pl_3 <- ggplot() +
+  geom_ribbon(data = df_ci,
+              aes(x = mnths, ymin = lo, ymax = hi),
+              alpha = 0.18) +
+  
+  geom_line(
+    data = data_even_shorter,
+    aes(mnths, y = lifesatisfaction, group = id),
+    color = "grey70",
+    linewidth = 0.4
+  ) +
+  geom_line(
+    data = gp_pred_f,
+    aes(x = mnths, y = y),
+    color = "firebrick4",
+    linewidth = 1
+  ) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+pl_3
+
+ggsave("gp_3.png",
+       pl_3,
+       width = 10,
+       height = 6,
+       dpi = 180)
 ```
 
