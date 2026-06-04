@@ -1673,4 +1673,176 @@ ggplot() +
 ```{r}
 rowMeans(sim$xi.sim[1:m, ])
 ```
+# less rigid bound
+```{r}
+library(lineqGPR)
 
+# ── 0. Normalise ───────────────────────────────────────────────────────────────
+iq_min <- min(c(data_no_hs_less$mom_iq, data_hs_less$mom_iq))
+iq_max <- max(c(data_no_hs_less$mom_iq, data_hs_less$mom_iq))
+normalise <- function(x) (x - iq_min) / (iq_max - iq_min)
+
+x_no_hs <- normalise(data_no_hs_less$mom_iq)
+y_no_hs  <- data_no_hs_less$kid_score
+
+x_hs    <- normalise(data_hs_less$mom_iq)
+y_hs    <- data_hs_less$kid_score
+
+# ── 1. Settings ────────────────────────────────────────────────────────────────
+m       <- 30
+u_knots <- seq(0, 1, length.out = m)
+
+kern_par <- c(sigma2 = 1, theta = 0.5)
+
+# ── 2. Basis and kernel matrices ───────────────────────────────────────────────
+Phi_no_hs_mat <- basisCompute.lineqGP(matrix(x_no_hs), matrix(u_knots))
+Phi_hs_mat    <- basisCompute.lineqGP(matrix(x_hs),    matrix(u_knots))
+
+n_no_hs <- length(x_no_hs)
+n_hs    <- length(x_hs)
+
+Phi_joint <- rbind(
+  cbind(Phi_no_hs_mat,        matrix(0, n_no_hs, m)),
+  cbind(matrix(0, n_hs, m),   Phi_hs_mat)
+)
+
+Gamma_base  <- kernCompute(matrix(u_knots), matrix(u_knots),
+                           type = "matern52", par = kern_par)
+Gamma_joint <- rbind(
+  cbind(Gamma_base,           matrix(0, m, m)),
+  cbind(matrix(0, m, m),      Gamma_base)
+)
+
+# ── 3. Constraint matrices ─────────────────────────────────────────────────────
+I_m <- diag(m)
+Z_m <- matrix(0, m, m)
+
+# Monotonicity difference matrix
+D <- matrix(0, m - 1, m)
+for (k in 2:m) { D[k-1, k-1] <- -1; D[k-1, k] <- 1 }
+
+# Ordering at 6 anchor knots within the observed data range only
+x_range     <- range(c(x_no_hs, x_hs))
+anchor_idx  <- which(u_knots >= x_range[1] & u_knots <= x_range[2])
+anchor_idx  <- anchor_idx[round(seq(1, length(anchor_idx), length.out = 6))]
+
+Lambda_order <- cbind(-I_m[anchor_idx, ], I_m[anchor_idx, ])
+
+Lambda_clean <- rbind(
+  cbind(I_m, Z_m),                          # boundedness no_hs
+  cbind(Z_m, I_m),                          # boundedness hs
+  cbind(D,   matrix(0, m-1, m)),            # monotonicity no_hs
+  cbind(matrix(0, m-1, m), D),              # monotonicity hs
+  Lambda_order                               # ordering at 6 anchor knots
+)
+
+lb_clean <- c(rep(0,   m),  rep(0,   m),    # boundedness lower
+              rep(0, 2*(m-1)),              # monotonicity lower
+              rep(0, length(anchor_idx)))   # ordering lower
+
+ub_clean <- c(rep(1,   m),  rep(1,   m),    # boundedness upper
+              rep(Inf, 2*(m-1)),            # monotonicity upper
+              rep(Inf, length(anchor_idx))) # ordering upper
+
+lsys <- bounds2lineqSys(nrow(Lambda_clean), lb_clean, ub_clean,
+                        Lambda_clean, lineqSysType = "oneside")
+
+# ── 4. Assemble joint model ────────────────────────────────────────────────────
+joint_model <- list(
+  x          = matrix(c(x_no_hs, x_hs)),
+  y          = matrix(c(y_no_hs, y_hs)),
+  constrType = "linear",
+  d          = 1,
+  constrIdx  = 1L,
+  varnoise   = 1e-2,
+  localParam = list(
+    m              = 2 * m,
+    sampler        = "HMC",
+    samplingParams = c(thinning = 1, burn.in = 100, scale = 0.1),
+    mvec           = nrow(Lambda_clean)
+  ),
+  kernParam  = list(
+    par    = kern_par,
+    type   = "matern52",
+    nugget = 1e-7
+  ),
+  Phi        = Phi_joint,
+  Gamma      = Gamma_joint,
+  Lambda     = Lambda_clean,
+  lb         = lb_clean,
+  ub         = ub_clean,
+  lineqSys   = list(M = lsys$M, g = -matrix(lsys$g)),
+  u          = list(matrix(u_knots))
+)
+class(joint_model) <- "lineqGP"
+
+# ── 5. Prediction and simulation ───────────────────────────────────────────────
+xtest      <- seq(0, 1, length.out = 200)
+xtest_orig <- xtest * (iq_max - iq_min) + iq_min
+
+Phi_test <- basisCompute.lineqGP(matrix(xtest), matrix(u_knots))
+
+sim <- simulate(joint_model,
+                nsim  = 200,
+                seed  = 42,
+                xtest = rbind(matrix(xtest), matrix(xtest)))
+
+ysim_no_hs <- Phi_test %*% sim$xi.sim[1:m,           ]
+ysim_hs    <- Phi_test %*% sim$xi.sim[(m+1):(2*m),   ]
+
+# Diagnostic: proportion of samples where hs >= no_hs at all xtest points
+cat("Proportion of samples with hs >= no_hs everywhere:",
+    mean(apply(ysim_hs >= ysim_no_hs, 2, all)), "\n")
+
+# save(Phi_test, file = "Phi_test_less_inf.RData")
+# save(pred, file = "pred_less_inf.RData")
+# save(sim, file = "sim_less_inf.RData")
+```
+
+```{r}
+library(ggplot2)
+
+group_colours <- c("No HS" = "#c0392b", "HS" = "#2980b9")
+
+ci_no_hs <- apply(ysim_no_hs, 1, quantile, probs = c(0.025, 0.975))
+ci_hs    <- apply(ysim_hs,    1, quantile, probs = c(0.025, 0.975))
+
+yhat_no_hs_orig <- rowMeans(ysim_no_hs)
+yhat_hs_orig    <- rowMeans(ysim_hs)
+
+df_ribbon <- data.frame(
+  mom_iq = rep(xtest_orig, 2),
+  ymin   = c(ci_no_hs[1, ], ci_hs[1, ]),
+  ymax   = c(ci_no_hs[2, ], ci_hs[2, ]),
+  group  = rep(c("No HS", "HS"), each = length(xtest_orig))
+)
+
+df_line <- data.frame(
+  mom_iq    = rep(xtest_orig, 2),
+  kid_score = c(yhat_no_hs_orig, yhat_hs_orig),
+  group     = rep(c("No HS", "HS"), each = length(xtest_orig))
+)
+
+df_points <- data.frame(
+  mom_iq    = c(data_no_hs_less$mom_iq, data_hs_less$mom_iq),
+  kid_score = c(data_no_hs_less$kid_score, data_hs_less$kid_score),
+  group     = rep(c("No HS", "HS"), times = c(nrow(data_no_hs_less), nrow(data_hs_less)))
+)
+
+ggplot() +
+  geom_ribbon(data = df_ribbon,
+              aes(x = mom_iq, ymin = ymin, ymax = ymax, fill = group),
+              alpha = 0.15) +
+  geom_line(data = df_line,
+            aes(x = mom_iq, y = kid_score, colour = group),
+            linewidth = 1.0) +
+  geom_point(data = df_points,
+             aes(x = mom_iq, y = kid_score, colour = group),
+             size = 1.5, alpha = 0.5, shape = 16) +
+  scale_colour_manual(values = group_colours, name = NULL) +
+  scale_fill_manual(values = group_colours, name = NULL) +
+  labs(x = "Mother's IQ", y = "Child's IQ score") +
+  theme_classic(base_size = 13) +
+  theme(legend.position = c(0.02, 0.98),
+        legend.justification = c("left", "top"))
+```
