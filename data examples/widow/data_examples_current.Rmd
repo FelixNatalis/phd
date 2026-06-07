@@ -594,6 +594,85 @@ ggplot(plot_df, aes(x = mnths)) +
   theme_minimal()
 ```
 
+# changepoint
+```{r}
+library(dplyr)
+library(rstan)
+library(ggplot2)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+data_even_shorter <- data_even_shorter %>%
+  select(id, lifesatisfaction, mnths) %>%
+  filter(!is.na(lifesatisfaction), !is.na(mnths)) %>%
+  arrange(id, mnths) %>%
+  mutate(id_int = as.integer(factor(id)))
+
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  # sigmoid, tuneable sd#abs(data_even_shorter$mnths)   # distance from event; 0 at occurrence
+)
+
+fit <- stan(
+  file = "C:/Users/margo/stan/hierarchical_changepoint.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit,
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3",        "sigma")
+)
+
+save(
+  fit,
+  file = "fit_2.RData"
+)
+
+#load("fit_2.RData")
 
 
+post_fit <- rstan::extract(fit)
+fit_n <- apply(post_fit$fit, 2, mean) 
+
+library(tidyverse)
+
+fit_summary <- summary(fit)$summary
+
+# Extract effects
+n <- nrow(data_even_shorter)
+
+eff1     <- fit_summary[paste0("eff_1[", 1:n, "]"), "mean"]
+eff2     <- fit_summary[paste0("eff_2[", 1:n, "]"), "mean"]
+intercept <- fit_summary["intercept", "mean"]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared     = intercept + eff1,
+    individual = intercept + eff1 + eff2
+  )
+
+ggplot(plot_df, aes(x = mnths)) +
+  geom_point(aes(y = lifesatisfaction, color = factor(id)), alpha = 0.4, size = 1.5) +
+  geom_line(aes(y = individual, color = factor(id), group = id), linewidth = 0.6, alpha = 0.8) +
+  geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey40") +
+  labs(
+    x = "Months relative to event", 
+    y = "Life satisfaction",
+    color = "Participant",
+    title = "Shared GP trend (dashed) and individual trajectories"
+  ) +
+  theme_minimal()
+```
 
