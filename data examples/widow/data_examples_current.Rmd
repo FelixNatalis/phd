@@ -526,19 +526,20 @@ data_even_shorter <- data_even_shorter %>%
   mutate(id_int = as.integer(factor(id)))
 
 stan_data <- list(
-  N = nrow(data_even_shorter),
-  S = length(unique(data_even_shorter$id_int)),
-  y = data_even_shorter$lifesatisfaction,
-  x = data_even_shorter$mnths,
-  subj = data_even_shorter$id_int
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  # sigmoid, tuneable sd#abs(data_even_shorter$mnths)   # distance from event; 0 at occurrence
 )
 
 fit <- stan(
-  file = "C:/Users/margo/stan/HIER.stan",# gp_changepoint
+  file = "C:/Users/margo/stan/hierarchical.stan",# gp_changepoint
   data = stan_data,
   chains = 4,
-  iter = 500,
-  warmup = 200,
+  iter = 1000,
+  warmup = 400,
   seed = 123,
   control = list(adapt_delta = 0.9)
 )
@@ -547,110 +548,52 @@ beep()
 
 print(
   fit,
-  pars = c("length_scale_k_1","variance_k_1", #"length_scale_k_2","variance_k_2","length_scale_k_3","variance_k_3",
-           "sigma","sigma_alpha")#, "steepness")
+  pars = c("length_scale_k1","variance_k1", #"length_scale_k_2","variance_k_2","length_scale_k_3","variance_k_3",
+           "sigma")#, "steepness")
 )
 
 save(
   fit,
-  file = "fit_0.RData"
+  file = "fit_1.RData"
 )
 
-#load("fit_0.RData")
+#load("fit_1.RData")
 
 
 post_fit <- rstan::extract(fit)
-fit_n <- apply(post_fit$fit, 2, mean) # gp_mean
-intercept_n <- colMeans(post_fit$alpha) #alpha_hat
-#steepness <- mean(post_fit$steepness)
+fit_n <- apply(post_fit$fit, 2, mean) 
 
-data_even_shorter <- data_even_shorter %>%
+library(tidyverse)
+
+fit_summary <- summary(fit)$summary
+
+# Extract effects
+n <- nrow(data_even_shorter)
+
+eff1     <- fit_summary[paste0("eff_1[", 1:n, "]"), "mean"]
+eff2     <- fit_summary[paste0("eff_2[", 1:n, "]"), "mean"]
+intercept <- fit_summary["intercept", "mean"]
+
+plot_df <- data_even_shorter %>%
   mutate(
-    gp_mean = fit_n,
-    alpha_hat = intercept_n[id_int],
-    
-    gp_centered = gp_mean - alpha_hat,
-    resid = lifesatisfaction - gp_mean
+    shared     = intercept + eff1,
+    individual = intercept + eff1 + eff2
   )
 
-ggplot()+
-  
- geom_line(
- data = data_even_shorter,
-  aes(x = mnths, y = gp_mean, group = id), alpha = 0.12, color = "black") +
-  
-  
-   geom_line(
- data = data_even_shorter,
-  aes(x = mnths, y = lifesatisfaction, group = id), alpha = 0.12, color = "blue") +
-  
-     geom_line(
- data = data_even_shorter,
-  aes(x = mnths, y = fit_n), alpha = 0.12, color = "red")# +
-  # geom_point(
-  #   aes(group = 1),
-  #   se = FALSE,
-  #   color = "blue",
-  #   linewidth = 1.5
-  # ) +
-  theme_minimal() +
+ggplot(plot_df, aes(x = mnths)) +
+  geom_point(aes(y = lifesatisfaction, color = factor(id)), alpha = 0.4, size = 1.5) +
+  geom_line(aes(y = individual, color = factor(id), group = id), linewidth = 0.6, alpha = 0.8) +
+  geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey40") +
   labs(
-    title = "Trajectory density",
-    subtitle = "Blue =  GP mean",
-    x = "Months",
-    y = "Centered GP trajectory"
-  )
-
-
-
-ggplot() +
-  geom_line(
-    data = data_even_shorter,
-    aes(mnths, y = lifesatisfaction, group = id),
-    color = "grey70",
-    linewidth = 0.4
+    x = "Months relative to event", 
+    y = "Life satisfaction",
+    color = "Participant",
+    title = "Shared GP trend (dashed) and individual trajectories"
   ) +
-  geom_line(
-    data = data_even_shorter,
-    aes(x = mnths, y = gp_mean),
-    color = "firebrick4",
-    linewidth = 1
-  ) +
-  ggtitle("Gaussian Process Regression") +
-  theme(plot.title = element_text(size = 13, face = "bold"))
+  theme_minimal()
 ```
 
 
 
-
-
-
-```{r}
-# old plots
-qtls_fit<-posterior_interval(post_fit$fit)
-qtls_pred<-posterior_interval(post_fit$y_2)
-qtls_eff_1<-posterior_interval(post_fit$eff_1)
-qtls_eff_2<-posterior_interval(post_fit$eff_2)
-qtls_eff_3<-posterior_interval(post_fit$eff_3)
-qtls_eff_4<-posterior_interval(post_fit$eff_4)
-
-pred <- data.frame(da_x = append(daily_d_shorter$day, seq(239, 300, by = 1)), 
-                   da_y = append(daily_d_shorter$irr_mean, rep(0, 62)), 
-                   gp = append(fit_n, y2_n), 
-                   ci_05 = append(qtls_fit[, 1],qtls_pred[, 1]),
-                   ci_95 = append(qtls_fit[, 2],qtls_pred[, 2]),
-                   e_1 = eff_1, 
-                   e_2 = eff_2, 
-                   e_3 = eff_3, 
-                   e_4 = eff_4)
-
-fit_plot <- ggplot() + geom_point(aes(x = data_even_shorter$day, y = daily_d_shorter$irr_mean)) + geom_line(data = pred,aes(da_x, gp), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4)
-eff_1_plot <-ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_1), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_1[,1], ymax = qtls_eff_1[,2]), fill = "gray60", alpha = 0.4)
-eff_2_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_2), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_2[,1], ymax = qtls_eff_2[,2]), fill = "gray60", alpha = 0.4)
-eff_3_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_3), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_3[,1], ymax = qtls_eff_3[,2]), fill = "gray60", alpha = 0.4)
-eff_4_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_4), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_4[,1], ymax = qtls_eff_4[,2]), fill = "gray60", alpha = 0.4)
-p<-(fit_plot ) / (eff_4_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
-p
-ggsave("gp_changepoint.png", p, width = 15, height = 15,dpi = 180)
-```
 
