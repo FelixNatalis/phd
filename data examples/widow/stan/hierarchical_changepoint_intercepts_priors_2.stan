@@ -139,28 +139,27 @@ transformed parameters {
 
 model {
   intercept_s1 ~ normal(5, 2);
-  intercept_s2 ~ normal(3, 2);
+  intercept_s2 ~ normal(2, 2);
   intercept_s3 ~ normal(4, 2);
 
   // Shared GP priors
-  length_scale_k1_s1 ~ inv_gamma(1, 10);
-  length_scale_k1_s2 ~ inv_gamma(2, 9);
-  length_scale_k1_s3 ~ inv_gamma(1, 7);
-  variance_k1_s1     ~ inv_gamma(4, 1);
-  variance_k1_s2     ~ inv_gamma(5, 15);  // higher variance for central section
-  variance_k1_s3     ~ inv_gamma(2, 1);
+  length_scale_k1_s1 ~ inv_gamma(1, 8);
+  length_scale_k1_s2 ~ inv_gamma(2, 7);
+  length_scale_k1_s3 ~ inv_gamma(1, 5);
+  variance_k1_s1     ~ inv_gamma(2, 8);
+  variance_k1_s2     ~ inv_gamma(5, 10);  // higher variance for central section
+  variance_k1_s3     ~ inv_gamma(2, 6);
   steepness1         ~ gamma(7, 0.5);    // prior centred around higher steepness
   steepness2         ~ gamma(3, 0.5);    // prior centred around lower steepness
-
   // Individual GP priors
-  length_scale_k2_s1 ~ inv_gamma(1, 8);
-  length_scale_k2_s2 ~ inv_gamma(3, 7);
-  length_scale_k2_s3 ~ inv_gamma(1, 7);
-  variance_k2_s1     ~ inv_gamma(2, 6);
+  length_scale_k2_s1 ~ inv_gamma(1, 4);
+  length_scale_k2_s2 ~ inv_gamma(3, 4);
+  length_scale_k2_s3 ~ inv_gamma(1, 4);
+  variance_k2_s1     ~ inv_gamma(2, 10);
   variance_k2_s2     ~ inv_gamma(2, 15);
-  variance_k2_s3     ~ inv_gamma(2, 5);
+  variance_k2_s3     ~ inv_gamma(2, 10);
 
-  sigma    ~ normal(1.5, 2);
+  sigma    ~ std_normal();
   eta      ~ std_normal();
   eta_ind  ~ std_normal();
 
