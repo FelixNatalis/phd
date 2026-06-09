@@ -9,14 +9,15 @@ data {
 
 transformed data {
   real delta = 1e-9;
-  real loc1 = -24.0;   // first changepoint:  anticipatory -> central
-  real loc2 =  24.0;   // second changepoint: central -> recovery
 }
 
 parameters {
   real intercept_s1;   // anticipatory baseline
   real intercept_s2;   // central (around event)
   real intercept_s3;   // recovery baseline
+  
+  real loc1;   // first changepoint:  anticipatory -> central
+  real loc2;   // second changepoint: central -> recovery
 
   // Shared GP — EQ kernels for each of the three sections
   real<lower=0> length_scale_k1_s1;   // anticipatory
@@ -141,6 +142,9 @@ model {
   intercept_s1 ~ normal(5.5, 1.2);
   intercept_s2 ~ normal(2, 2);
   intercept_s3 ~ normal(4.5, 1.2);
+  
+  loc1 ~ normal(-24, 5);
+  loc2  ~ normal(24, 5);
 
   // Shared GP priors
   length_scale_k1_s1 ~ inv_gamma(3, 7);
