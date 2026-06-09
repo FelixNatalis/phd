@@ -712,7 +712,7 @@ beep()
 
 print(
   fit_3,
-  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",    "sigma")
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",     "sigma", "length_scale_k2_s1","variance_k2_s1", "length_scale_k2_s2","variance_k2_s2",    "length_scale_k2_s3","variance_k2_s3")
 )
 
 save(
@@ -720,7 +720,7 @@ save(
   file = "fit_3.RData"
 )
 
-#load("fit_3.RData")
+load("./fits/fit_3.RData")
 
 
 post_fit_3 <- rstan::extract(fit_3)
@@ -834,7 +834,7 @@ beep()
 
 print(
   fit_4,
-  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",    "sigma")
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",    "sigma", "length_scale_k2_s1","variance_k2_s1", "length_scale_k2_s2","variance_k2_s2",    "length_scale_k2_s3","variance_k2_s3")
 )
 
 save(
@@ -927,7 +927,7 @@ save(
   file = "fit_5.RData"
 )
 
-#load("fit_5.RData")
+load("./fits/fit_4.RData")
 
 
 post_fit_5 <- rstan::extract(fit_5)
@@ -978,3 +978,84 @@ ggplot(plot_df, aes(x = mnths)) +
   ) +
   theme_minimal()
 ```
+
+# priors 3
+```{r}
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  
+)
+
+fit_6 <- stan(
+  file = "./stan/hierarchical_changepoint_intercepts_priors_3.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit_6,
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",    "sigma", "length_scale_k2_s1","variance_k2_s1", "length_scale_k2_s2","variance_k2_s2",    "length_scale_k2_s3","variance_k2_s3")
+)
+save(
+  fit_6,
+  file = "fit_6.RData"
+)
+
+#load("./fits/fit_6.RData")
+
+library(tidyverse)
+
+fit_summary <- summary(fit_6)$summary
+n <- nrow(data_even_shorter)
+
+extract_stat <- function(param, stat) fit_summary[paste0(param, "[", 1:n, "]"), stat]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared      = extract_stat("fit", "mean"), #extract_stat("eff_1", "mean") + fit_summary["intercept_s2", "mean"],
+    shared_lo   = extract_stat("fit", "2.5%"), # + fit_summary["intercept_s2", "mean"],
+    shared_hi   = extract_stat("fit", "97.5%"),# + fit_summary["intercept_s2", "mean"],
+    individual  = extract_stat("fit",   "mean"),
+    ind_lo      = extract_stat("fit",   "2.5%"),
+    ind_hi      = extract_stat("fit",   "97.5%")
+  )
+
+ggplot(plot_df, aes(x = mnths)) +
+  # Individual CI ribbons
+#  geom_ribbon(aes(ymin = ind_lo, ymax = ind_hi, fill = factor(id)),
+#              alpha = 0.15) +
+  # Shared CI ribbon
+  geom_ribbon(aes(ymin = shared_lo, ymax = shared_hi),
+              fill = "grey30", alpha = 0.25) +
+  # Raw data
+  geom_point(aes(y = lifesatisfaction, color = factor(id)),
+             alpha = 0.4, size = 1.5) +
+  # Individual fitted lines
+  geom_line(aes(y = individual, color = factor(id), group = id),
+            linewidth = 0.6, alpha = 0.8) +
+  # Shared GP line
+  geom_line(aes(y = shared),
+            color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = c(-12, 12),
+             linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0,
+             linetype = "solid", color = "grey40", alpha = 0.5) +
+  labs(
+    x = "Months relative to event",
+    y = "Life satisfaction",
+    color = "Participant", fill = "Participant",
+    title = "Shared trend (dashed) with 95% CI and individual trajectories"
+  ) +
+  theme_minimal()
+```
+
