@@ -1,4 +1,4 @@
-# imports
+
 library(shiny)
 library(ggplot2)
 library(VaRES)
@@ -12,7 +12,7 @@ library(shinyjs)
 library(lineqGPR)
 library(shinysurveys)
 
-source("GreatPlains.r")
+source("GreatPlains.R")
 
 #-------------------------------------------------------------------------------
 ################################################################################
