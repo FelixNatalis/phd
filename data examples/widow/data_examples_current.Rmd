@@ -1141,3 +1141,57 @@ ggplot(plot_df, aes(x = mnths)) +
   ) +
   theme_minimal()
 ```
+```{r}
+p1<-ggplot(plot_df, aes(x = mnths)) +
+  # Individual CI ribbons
+ # geom_ribbon(aes(ymin = ind_lo, ymax = ind_hi, fill = factor(id)),  alpha = 0.1) +
+  # Shared CI ribbon
+  geom_ribbon(aes(ymin = shared_lo, ymax = shared_hi),     fill = "grey30", alpha = 0.25) +
+  # Raw data
+  geom_point(aes(y = lifesatisfaction, color = factor(id)),  alpha = 0.4, size = 1.5) +
+  # Individual fitted lines
+  geom_line(aes(y = individual, color = factor(id), group = id),   linewidth = 0.6, alpha = 0.8) +
+  # Shared GP line
+  geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = c(-24, 24),       linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0, linetype = "solid", color = "grey40", alpha = 0.5) +
+  labs(
+    x = "Months relative to event",
+    y = "Life satisfaction",
+    color = "Participant", fill = "Participant",
+    title = "Shared trend (dashed) with 95% CI and individual trajectories"
+  ) +
+  theme_minimal()
+ggsave("fit_7_special_shared.png",
+       p1,
+       width = 10,
+       height = 6,
+       dpi = 180)
+
+p2<-ggplot(plot_df, aes(x = mnths)) +
+  # Individual CI ribbons
+  geom_ribbon(aes(ymin = ind_lo, ymax = ind_hi, fill = factor(id)),  alpha = 0.1) +
+  # Shared CI ribbon
+  #geom_ribbon(aes(ymin = shared_lo, ymax = shared_hi),     fill = "grey30", alpha = 0.25) +
+  # Raw data
+  geom_point(aes(y = lifesatisfaction, color = factor(id)),  alpha = 0.4, size = 1.5) +
+  # Individual fitted lines
+  geom_line(aes(y = individual, color = factor(id), group = id),   linewidth = 0.6, alpha = 0.8) +
+  # Shared GP line
+  #geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = c(-24, 24),       linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0, linetype = "solid", color = "grey40", alpha = 0.5) +
+  labs(
+    x = "Months relative to event",
+    y = "Life satisfaction",
+    color = "Participant", fill = "Participant",
+    title = "Shared trend (dashed) with 95% CI and individual trajectories"
+  ) +
+  theme_minimal()
+ggsave("fit_7_special_individual.png",
+       p2,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+
