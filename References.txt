@@ -1,0 +1,7 @@
+[1] C. E. Rasmussen and C. K. I. Williams. Gaussian processes for machine learning. Adaptive computation and machine learning. MIT Press, Cambridge, Mass., 3. print edition, 2008.
+[2] A. Gelman, J. B. Carlin, H. S. Stern, D. B. Dunson, A. Vehtari, D.B. Rubin. Bayesian Data Analysis, Third Edition. Chapman and Hall/CRC, 2016.
+[3] L. P. Swiler, M. Gulian, A. L. Frankel, C. Safta, and J. D. Jakeman. A Survey of Constrained Gaussian Process Regression: Approaches and Implementation Challenges. J Mach Learn Model Comput, 1(2):119–156, 2020.
+[4] J. Timonen, H. Mannerstrom, A. Vehtari, H. Lahdesmaki. lgpr: an interpretable non-parametric method for inferring covariate effects from longitudinal data. Bioinformatics, 37(13):1860–1867, July 2021.
+[5] A. F. L´opez-Lopera, F. Bachoc, N. Durrande, J. Rohmer, D. Idier, O. Roustant. Approximating gaussian process emulators with linear inequality constraints and noisy observations via mc and mcmc. In Bruno Tuffin and Pierre L’Ecuyer, editors, Monte Carlo and Quasi-Monte Carlo Methods, pages 363–381, Cham, 2020. Springer International Publishing.
+[6] D. K. Duvenaud. Automatic Model Construction with Gaussian Processes. PhD thesis, University of Cambridge, 2014.
+[7] L. Levelt, J. Mulder, N. C. Lee, M. Luhmann, and J. J. A. Denissen. Modelling non-linear personality change surrounding transitions: A review of statistical approaches. European Journal of Personality, page 08902070251376407, 2025.
