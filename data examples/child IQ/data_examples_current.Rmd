@@ -1378,6 +1378,8 @@ nrow(data_hs_less)
 
 ggplot()+ geom_point(data = data_hs_less, color = "blue", aes(x = mom_iq, y = kid_score), alpha = 0.5) +geom_point(data = data_no_hs_less, color = "red", aes(x = mom_iq, y = kid_score), alpha = 0.5)  + geom_smooth(data = data_hs_less, color = "blue", aes(x = mom_iq, y = kid_score))+ geom_smooth(data = data_no_hs_less, color = "red", aes(x = mom_iq, y = kid_score))
 save(data_hs_less, file = "data_hs_less.RData")
+#load(file = "./data/data_hs_less.RData")
+#load(file = "data_no_hs_less.RData")
 ```
 
 
@@ -1453,7 +1455,7 @@ df_points <- data.frame(
   group     = rep(c("No HS", "HS"), times = c(nrow(data_no_hs_less), nrow(data_hs_less)))
 )
  
-ggplot() +
+p<-ggplot() +
   geom_ribbon(data = df_ribbon,
               aes(x = mom_iq, ymin = ymin, ymax = ymax, fill = group),
               alpha = 0.15) +
@@ -1466,9 +1468,19 @@ ggplot() +
   scale_colour_manual(values = group_colours, name = NULL) +
   scale_fill_manual(values = group_colours, name = NULL) +
   labs(x = "Mother's IQ", y = "Child's IQ score") +
-  theme_classic(base_size = 13) +
-  theme(legend.position = c(0.02, 0.98),
+  #theme_classic(base_size = 13) +
+ # theme(legend.position = c(0.02, 0.98),
+  #      legend.justification = c("left", "top"))
+    theme_bw() +
+   theme(axis.text=element_text(size=12),
+         axis.title=element_text(size=20,face="bold", color = "black"),
+     axis.line = element_line(color='black'),
+    plot.background = element_blank(),
+   panel.grid.minor = element_blank(),
+     panel.border = element_blank(),
+   legend.position = c(0.02, 0.82),
         legend.justification = c("left", "top"))
+ggsave("gp_noninf.png", p, width = 10, height = 7,dpi = 300)
 ```
 
 ### informative model
@@ -1795,7 +1807,11 @@ cat("Proportion of samples with hs >= no_hs everywhere:",
     mean(apply(ysim_hs >= ysim_no_hs, 2, all)), "\n")
 
 # save(Phi_test, file = "Phi_test_less_inf.RData")
+load(file = "./fits/Phi_test_less_inf.RData")
+load(file = "./fits/sim_less_inf.RData")
+load(file = "./fits/pred_less_inf.RData")
 # save(pred, file = "pred_less_inf.RData")
+
 # save(sim, file = "sim_less_inf.RData")
 ```
 
@@ -1898,7 +1914,7 @@ Z_m <- matrix(0, m, m)
 # Ordering at 6 anchor knots within the observed data range only
 x_range     <- range(c(x_no_hs, x_hs))
 anchor_idx  <- which(u_knots >= x_range[1] & u_knots <= x_range[2])
-anchor_idx  <- anchor_idx[round(seq(1, length(anchor_idx), length.out = 6))]
+anchor_idx  <- anchor_idx[round(seq(1, length(anchor_idx), length.out = 2))]
 
 Lambda_order <- cbind(-I_m[anchor_idx, ], I_m[anchor_idx, ])
 
@@ -2003,7 +2019,7 @@ df_points <- data.frame(
   group     = rep(c("No HS", "HS"), times = c(nrow(data_no_hs_less), nrow(data_hs_less)))
 )
 
-ggplot() +
+p<-ggplot() +
   geom_ribbon(data = df_ribbon,
               aes(x = mom_iq, ymin = ymin, ymax = ymax, fill = group),
               alpha = 0.15) +
@@ -2016,7 +2032,16 @@ ggplot() +
   scale_colour_manual(values = group_colours, name = NULL) +
   scale_fill_manual(values = group_colours, name = NULL) +
   labs(x = "Mother's IQ", y = "Child's IQ score") +
-  theme_classic(base_size = 13) +
-  theme(legend.position = c(0.02, 0.98),
+ # theme_classic(base_size = 13) +
+    theme_bw() +
+   theme(axis.text=element_text(size=12),
+         axis.title=element_text(size=20,face="bold", color = "black"),
+     axis.line = element_line(color='black'),
+    plot.background = element_blank(),
+   panel.grid.minor = element_blank(),
+     panel.border = element_blank(),
+   legend.position = c(0.02, 0.82),
         legend.justification = c("left", "top"))
+ 
+ggsave("gp_inf.png", p, width = 10, height = 7,dpi = 300)
 ```

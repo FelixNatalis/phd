@@ -592,7 +592,7 @@ save(
   file = "fit_less_inf.RData"
 )
 
-#load("fit_less_inf.RData")
+load("./fits/fit_less_inf.RData")
 
 post_fit_less_inf <- rstan::extract(fit_less_inf)
 fit_n <- apply(post_fit_less_inf$fit, 2, mean)
@@ -619,14 +619,33 @@ pred <- data.frame(da_x = append(daily_d_shorter$day, seq(239, 300, by = 1)),
                    e_3 = eff_3, 
                    e_4 = eff_4)
 
-fit_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean)) + geom_line(data = pred,aes(da_x, gp), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4)
+fit_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean)) + geom_line(data = pred,aes(da_x, gp), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4)+   labs(
+    x = "Day of observation",
+    y = "Mean irritability per day",
+  #  color = "Participant", fill = "Participant"#,
+#    title = "Default priors"
+  ) +
+      theme_bw() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=20,face="bold", color = "black"),
+    axis.line = element_line(color='black'),
+    plot.background = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    legend.position="none")
+ # theme(axis.text=element_text(size=12),
+ #        axis.title=element_text(size=20,face="bold", color = "black"),
+ #       title = element_text(size=30,face="bold", color = "black"))
+
+
+
 eff_1_plot <-ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_1), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_1[,1], ymax = qtls_eff_1[,2]), fill = "gray60", alpha = 0.4)
 eff_2_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_2), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_2[,1], ymax = qtls_eff_2[,2]), fill = "gray60", alpha = 0.4)
 eff_3_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_3), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_3[,1], ymax = qtls_eff_3[,2]), fill = "gray60", alpha = 0.4)
 eff_4_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_4), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_4[,1], ymax = qtls_eff_4[,2]), fill = "gray60", alpha = 0.4)
-p<-(fit_plot ) / (eff_4_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
+p<-(fit_plot ) #/ (eff_4_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
 p
-ggsave("gp_less_inf.png", p, width = 15, height = 15,dpi = 180)
+ggsave("gp_less_inf.png", p, width = 10, height = 7,dpi = 300)
 
 
 ```
@@ -664,7 +683,7 @@ save(
   file = "fit_less.RData"
 )
 
-#load("fit_less.RData")
+load("./fits/fit_less.RData")
 
 post_fit_less <- rstan::extract(fit_less)
 fit_n <- apply(post_fit_less$fit, 2, mean)
@@ -691,14 +710,33 @@ pred <- data.frame(da_x = append(daily_d_shorter$day, seq(239, 300, by = 1)),
                    e_3 = eff_3, 
                    e_4 = eff_4)
 
-fit_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean)) + geom_line(data = pred,aes(da_x, gp), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4)
+fit_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean)) + geom_line(data = pred,aes(da_x, gp), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = ci_05, ymax = ci_95), fill = "gray60", alpha = 0.4) +   labs(
+    x = "Day of observation",
+    y = "Mean irritability per day",
+  #  color = "Participant", fill = "Participant"#,
+#    title = "Default priors"
+  ) +
+        theme_bw() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=20,face="bold", color = "black"),
+    axis.line = element_line(color='black'),
+    plot.background = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    legend.position="none")
+ # theme(axis.text=element_text(size=12),
+ #        axis.title=element_text(size=20,face="bold", color = "black"),
+ #       title = element_text(size=30,face="bold", color = "black"))
+
+
 eff_1_plot <-ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_1), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_1[,1], ymax = qtls_eff_1[,2]), fill = "gray60", alpha = 0.4)
 eff_2_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_2), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_2[,1], ymax = qtls_eff_2[,2]), fill = "gray60", alpha = 0.4)
 eff_3_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_3), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_3[,1], ymax = qtls_eff_3[,2]), fill = "gray60", alpha = 0.4)
 eff_4_plot <- ggplot() + geom_point(aes(x = daily_d_shorter$day, y = daily_d_shorter$irr_mean))  + geom_line(data = pred,aes(da_x, e_4), color = "red") + geom_ribbon(data = pred, aes(x = da_x, ymin = qtls_eff_4[,1], ymax = qtls_eff_4[,2]), fill = "gray60", alpha = 0.4)
-p<-(fit_plot ) / (eff_4_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
+
+p<-fit_plot  #/ (eff_4_plot + eff_1_plot) / (eff_2_plot + eff_3_plot)
 p
-ggsave("gp_less.png", p, width = 15, height = 15,dpi = 180)
+ggsave("gp_less_3.png", p, width = 10, height = 7,dpi = 300)
 
 
 ```
