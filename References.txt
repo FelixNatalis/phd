@@ -1,4 +1,4 @@
-[1] C. E. Rasmussen and C. K. I. Williams. Gaussian processes for machine learning. Adaptive computation and machine learning. MIT Press, Cambridge, Mass., 3. print edition, 2008.
+[1] C. E. Rasmussen, C. K. I. Williams. Gaussian processes for machine learning. Adaptive computation and machine learning. MIT Press, Cambridge, Mass., 3. print edition, 2008.
 [2] A. Gelman, J. B. Carlin, H. S. Stern, D. B. Dunson, A. Vehtari, D.B. Rubin. Bayesian Data Analysis, Third Edition. Chapman and Hall/CRC, 2016.
 [3] L. P. Swiler, M. Gulian, A. L. Frankel, C. Safta, and J. D. Jakeman. A Survey of Constrained Gaussian Process Regression: Approaches and Implementation Challenges. J Mach Learn Model Comput, 1(2):119–156, 2020.
 [4] J. Timonen, H. Mannerstrom, A. Vehtari, H. Lahdesmaki. lgpr: an interpretable non-parametric method for inferring covariate effects from longitudinal data. Bioinformatics, 37(13):1860–1867, July 2021.
