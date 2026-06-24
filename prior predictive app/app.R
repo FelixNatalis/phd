@@ -22,6 +22,7 @@ source("GreatPlains.R")
 
 # defaults parameters for GP prior predictive draws
 n_functions = 10
+n_func = 1 # how many GP functions are drawn per parameter combinations
 x_min = -10
 x_max = 10
 n_points = 200
@@ -102,22 +103,22 @@ ui <- page_fillable(
           )
         ),
         card(
-          card_header("Hyperparameters for variance"),
+          card_header("Hyperparameters for magnitude"),
           layout_columns(
             column(
               width = 8,
-              sliderInput("variance_df", "Half-t degrees of freedom:", 1, 5, 4),
-              sliderInput("variance_scale", "Half-t scale:", 1, 15, 1),
-              actionButton("draw_variance", "Draw New Variance")
+              sliderInput("magnitude_df", "Half-t degrees of freedom:", 1, 5, 4),
+              sliderInput("magnitude_scale", "Half-t scale:", 1, 15, 1),
+              actionButton("draw_magnitude", "Draw magnitude")
             )
             ,
-            plotOutput("plot_variance", height = "250px")
+            plotOutput("plot_magnitude", height = "250px")
           )
         ),
         uiOutput("dynamic_length_scale_choice"),
         uiOutput("dynamic_roughness_choice"),
         uiOutput("dynamic_period_choice"),
-        uiOutput("dynamic_variance_2_choice"),
+        uiOutput("dynamic_magnitude_2_choice"),
         uiOutput("dynamic_length_scale_2_choice"),
         uiOutput("dynamic_roughness_2_choice"),
         uiOutput("dynamic_period_2_choice"),
@@ -133,7 +134,7 @@ ui <- page_fillable(
             width = 8,
             checkboxInput(
               "is_upper_bound",
-              "Upper bound",
+              "Upper Y-scale bound",
               value = FALSE,
               width = NULL
             ),
@@ -143,7 +144,7 @@ ui <- page_fillable(
             width = 8,
             checkboxInput(
               "is_lower_bound",
-              "Lower bound",
+              "Lower Y-scale bound",
               value = FALSE,
               width = NULL
             ),
@@ -153,7 +154,7 @@ ui <- page_fillable(
             width = 8,
             checkboxInput(
               "is_monotonicity",
-              "Monotonicity",
+              "Non-decreasing monotonicity",
               value = FALSE,
               width = NULL
             ),
@@ -173,9 +174,9 @@ ui <- page_fillable(
       ),
       card(
         card_header("Specific function values"),
-        layout_columns(numberInput("x_1", "x_1"), numberInput("y_1", "y_1")),
-        layout_columns(numberInput("x_2", "x_2"), numberInput("y_2", "y_2")),
-        layout_columns(numberInput("x_3", "x_3"), numberInput("y_3", "y_3"))
+        layout_columns(numberInput("x_1", "x₁"), numberInput("y_1", "y₁")),
+        layout_columns(numberInput("x_2", "x₂"), numberInput("y_2", "y₂")),
+        layout_columns(numberInput("x_3", "x₃"), numberInput("y_3", "y₃"))
       )
     ),
     
@@ -183,17 +184,17 @@ ui <- page_fillable(
       card(
         card_header("Other parameters"),
         #sliderInput("sigma_n", "Noise amplitude:", 0, 15, 1),
-        sliderInput("nfunc", "Number of Functions:", 1, n_functions, 5),
+   #     sliderInput("nfunc", "Number of functions to draw:", 1, n_functions, 5),
         sliderInput(
           "n_points",
-          "Number of X Points:",
+          "Number of grid points on the X-scale:",
           value = n_points,
           min = 2,
           max = 400
         ),
         sliderInput(
           "x_range",
-          "x range",
+          "Range of the X-scale:",
           min = -100,
           max = 100,
           value = c(x_min, x_max)
@@ -218,11 +219,11 @@ server <- function(input, output) {
   ## Observable variables
   last_params     <- reactiveVal(NULL)
   last_pool       <- reactiveVal(NULL)
-  variance        <- reactiveVal(NULL)
+  magnitude        <- reactiveVal(NULL)
   length_scale    <- reactiveVal(NULL)
   roughness       <- reactiveVal(NULL)
   period          <- reactiveVal(NULL)
-  variance_2      <- reactiveVal(NULL)
+  magnitude_2      <- reactiveVal(NULL)
   length_scale_2  <- reactiveVal(NULL)
   roughness_2     <- reactiveVal(NULL)
   period_2        <- reactiveVal(NULL)
@@ -234,10 +235,10 @@ server <- function(input, output) {
   draws           <- reactiveVal(NULL)
   
   rv <- reactiveValues(
-    var = FALSE,
+    mag = FALSE,
     ls  = FALSE,
     per = FALSE,
-    var_2 = FALSE,
+    mag_2 = FALSE,
     ls_2  = FALSE,
     per_2 = FALSE
   )
@@ -245,26 +246,26 @@ server <- function(input, output) {
   condition_parameters_check <- function() {
     return((
       input$kernel_label == "Linear"
-      && rv$var
+      && rv$mag
       || input$kernel_label == "Periodic"
-      && rv$var && rv$ls && rv$per
+      && rv$mag && rv$ls && rv$per
       || input$kernel_label == "Squared Exponential"
-      && rv$var && rv$ls
+      && rv$mag && rv$ls
       || input$kernel_label == "Matérn"
-      && rv$var && rv$ls
+      && rv$mag && rv$ls
     )
     && (
       !input$is_combination || # conditions on kernel 1
         input$is_combination &&
         (
           input$kernel_label_2 == "Linear"
-          && rv$var_2
+          && rv$mag_2
           || input$kernel_label_2 == "Periodic"
-          && rv$var_2 && rv$ls_2 && rv$per_2
+          && rv$mag_2 && rv$ls_2 && rv$per_2
           || input$kernel_label_2 == "Squared Exponential"
-          && rv$var_2 && rv$ls_2
+          && rv$mag_2 && rv$ls_2
           || input$kernel_label_2 == "Matérn"
-          && rv$var_2 && rv$ls_2
+          && rv$mag_2 && rv$ls_2
         )
     )
     )
@@ -328,13 +329,13 @@ server <- function(input, output) {
     }
   })
   
-  observe({
-    if (!input$multiple_draws_switch) {
-      shinyjs::enable("nfunc")
-    } else {
-      shinyjs::disable("nfunc")
-    }
-  })
+  # observe({
+  #   if (!input$multiple_draws_switch) {
+  #     shinyjs::enable("nfunc")
+  #   } else {
+  #     shinyjs::disable("nfunc")
+  #   }
+  # })
   
   
   output$dynamic_length_scale_choice <- renderUI({
@@ -347,7 +348,7 @@ server <- function(input, output) {
             width = 8,
             sliderInput("length_scale_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("length_scale_beta", "Inverse-Gamma beta:", 1, 15, 1),
-            actionButton("draw_length_scale", "Draw New Length Scale")
+            actionButton("draw_length_scale", "Draw length scale")
           ),
           plotOutput("plot_length_scale", height = "250px")
         )
@@ -365,7 +366,7 @@ server <- function(input, output) {
             width = 8,
             sliderInput("period_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("period_beta", "Inverse-Gamma beta:", 1, 15, 1),
-            actionButton("draw_period", "Draw New Period")
+            actionButton("draw_period", "Draw period")
           ),
           plotOutput("plot_period", height = "250px")
         )
@@ -392,19 +393,19 @@ server <- function(input, output) {
   
   # Parameters for the second kernel
   
-  output$dynamic_variance_2_choice <- renderUI({
+  output$dynamic_magnitude_2_choice <- renderUI({
     if (input$is_combination && !invalid(input$kernel_label_2)) {
       card(
-        card_header("Hyperparameters for variance of the second kernel"),
+        card_header("Hyperparameters for magnitude of the second kernel"),
         layout_columns(
           column(
             width = 8,
-            sliderInput("variance_2_df", "Half-t degrees of freedom:", 1, 5, 4),
-            sliderInput("variance_2_scale", "Half-t scale:", 1, 15, 1),
-            actionButton("draw_variance_2", "Draw New Variance")
+            sliderInput("magnitude_2_df", "Half-t degrees of freedom:", 1, 5, 4),
+            sliderInput("magnitude_2_scale", "Half-t scale:", 1, 15, 1),
+            actionButton("draw_magnitude_2", "Draw magnitude")
           )
           ,
-          plotOutput("plot_variance_2", height = "250px")
+          plotOutput("plot_magnitude_2", height = "250px")
         )
       )
     }
@@ -420,7 +421,7 @@ server <- function(input, output) {
             width = 8,
             sliderInput("length_scale_2_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("length_scale_2_beta", "Inverse-Gamma beta:", 1, 15, 1),
-            actionButton("draw_length_scale_2", "Draw New Length Scale")
+            actionButton("draw_length_scale_2", "Draw length scale")
           ),
           plotOutput("plot_length_scale_2", height = "250px")
         )
@@ -438,7 +439,7 @@ server <- function(input, output) {
             width = 8,
             sliderInput("period_2_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("period_2_beta", "Inverse-Gamma beta:", 1, 15, 1),
-            actionButton("draw_period_2", "Draw New Period")
+            actionButton("draw_period_2", "Draw period")
           ),
           plotOutput("plot_period_2", height = "250px")
         )
@@ -564,11 +565,11 @@ server <- function(input, output) {
     period(draws)
   })
   
-  # drawing variance on button click
-  variance_draw <- eventReactive(input$draw_variance, {
+  # drawing magnitude on button click
+  magnitude_draw <- eventReactive(input$draw_magnitude, {
     if (!input$multiple_draws_switch) {
       seed_val <- digest(
-        list(input$variance_df, input$variance_scale),
+        list(input$magnitude_df, input$magnitude_scale),
         algo = "xxhash32",
         serialize = TRUE
       ) |>
@@ -578,12 +579,12 @@ server <- function(input, output) {
     
     draws <- c()
     for (i in 1:input$n_to_draw) {
-      draw <- half_t(df = input$variance_df,
-                     scale = input$variance_scale)
+      draw <- half_t(df = input$magnitude_df,
+                     scale = input$magnitude_scale)
       draws <- append(draws, draw)
     }
-    rv$var <- TRUE
-    variance(draws)
+    rv$mag <- TRUE
+    magnitude(draws)
   })
   
   #-------------------------------------------------------------------------------
@@ -634,11 +635,11 @@ server <- function(input, output) {
     period_2(draws)
   })
   
-  # drawing variance on button click
-  variance_2_draw <- eventReactive(input$draw_variance_2, {
+  # drawing magnitude on button click
+  magnitude_2_draw <- eventReactive(input$draw_magnitude_2, {
     if (!input$multiple_draws_switch) {
       seed_val <- digest(
-        list(input$variance_2_df, input$variance_2_scale),
+        list(input$magnitude_2_df, input$magnitude_2_scale),
         algo = "xxhash32",
         serialize = TRUE
       ) |>
@@ -648,12 +649,12 @@ server <- function(input, output) {
     
     draws <- c()
     for (i in 1:input$n_to_draw) {
-      draw <- half_t(df = input$variance_2_df,
-                     scale = input$variance_2_scale)
+      draw <- half_t(df = input$magnitude_2_df,
+                     scale = input$magnitude_2_scale)
       draws <- append(draws, draw)
     }
-    rv$var_2 <- TRUE
-    variance_2(draws)
+    rv$mag_2 <- TRUE
+    magnitude_2(draws)
   })
   #-------------------------------------------------------------------------------
   ## GP redraw logic
@@ -662,11 +663,11 @@ server <- function(input, output) {
       tryCatch({
         kernel <- c(input$kernel_label, input$kernel_label_2)
         len <- length_scale()
-        var <- variance()
+        mag <- magnitude()
         per <- period()
         ro <- as.numeric(input$nu)
         len_2 <- length_scale_2()
-        var_2 <- variance_2()
+        mag_2 <- magnitude_2()
         per_2 <- period_2()
         ro_2 <- as.numeric(input$nu_2)
         loc <- location()
@@ -682,11 +683,11 @@ server <- function(input, output) {
             is.list(old_params) &&
             identical(old_params$kernel_prev, kernel) &&
             identical(old_params$length_scale, len) &&
-            identical(old_params$variance, var) &&
+            identical(old_params$magnitude, mag) &&
             identical(old_params$period, per) &&
             identical(old_params$roughness, ro) &&
             identical(old_params$length_scale_2, len_2) &&
-            identical(old_params$variance_2, var_2) &&
+            identical(old_params$magnitude_2, mag_2) &&
             identical(old_params$period_2, per_2) &&
             identical(old_params$roughness_2, ro_2) &&
             identical(old_params$location, loc) &&
@@ -707,7 +708,7 @@ server <- function(input, output) {
         if (!multi) {
           kernel_params <- hash(
             "kernel_1" = hash(
-              "variance" = var
+              "magnitude" = mag
               ,
               "length_scale" = len
               ,
@@ -716,7 +717,7 @@ server <- function(input, output) {
               "roughness" = ro
             ),
             "kernel_2" = hash(
-              "variance" = var_2
+              "magnitude" = mag_2
               ,
               "length_scale" = len_2
               ,
@@ -752,7 +753,7 @@ server <- function(input, output) {
           funcs <- vapply(seq_len(n_draw), function(i) {
             kernel_params_i <- hash(
               "kernel_1" = hash(
-                "variance" = var[i]
+                "magnitude" = mag[i]
                 ,
                 "length_scale" = len[i]
                 ,
@@ -761,7 +762,7 @@ server <- function(input, output) {
                 "roughness" = ro
               ),
               "kernel_2" = hash(
-                "variance" = var_2[i]
+                "magnitude" = mag_2[i]
                 ,
                 "length_scale" = len_2[i]
                 ,
@@ -797,11 +798,11 @@ server <- function(input, output) {
           list(
             kernel_prev = kernel,
             length_scale = len,
-            variance = var,
+            magnitude = mag,
             period = per,
             roughness = ro ,
             length_scale_2 = len_2,
-            variance_2 = var_2,
+            magnitude_2 = mag_2,
             period_2 = per_2,
             roughness_2 = ro_2,
             location = loc,
@@ -853,7 +854,7 @@ server <- function(input, output) {
       y <- x_orig
       kernel_params <- hash(
         "kernel_1" = hash(
-          "variance" = variance()
+          "magnitude" = magnitude()
           ,
           "length_scale" = length_scale()
           ,
@@ -890,7 +891,7 @@ server <- function(input, output) {
         kernel_params = kernel_params,
         constraints = constraints,
         constraint_params = constraint_params,
-        n_functions = input$nfunc,
+        n_functions = n_func,#input$nfunc,
         x_draw = x_draw,
         data_noise = data_noise
       )
@@ -905,12 +906,12 @@ server <- function(input, output) {
    
     req(gp_pool())
     pool  <- gp_pool()
-    
-    if(input$multiple_draws_switch){
-      func_sequence <- seq_len(input$n_to_draw)
-    }else{
-      func_sequence <-seq_len(input$nfunc)
-    }
+    func_sequence <- seq_len(input$n_to_draw)
+    # if(input$multiple_draws_switch){
+    #   func_sequence <- seq_len(input$n_to_draw)
+    # }else{
+    #   func_sequence <-seq_len()#input$nfunc)
+    # }
     
     if (!constrained_check()) {
       x_new <- seq(input$x_range[1], input$x_range[2], length.out = input$n_points)
@@ -1004,21 +1005,21 @@ server <- function(input, output) {
     )
   })
   
-  # Half-t prior for variance plot
-  output$plot_variance <- renderPlot({
-    observe(variance_draw())
+  # Half-t prior for magnitude plot
+  output$plot_magnitude <- renderPlot({
+    observe(magnitude_draw())
     
     x_seq <- seq(0, 15, length.out = 400)
-    df <- input$variance_df
-    sc <- input$variance_scale
+    df <- input$magnitude_df
+    sc <- input$magnitude_scale
     dens <- half_t(df = df, scale = sc, x = x_seq)
     d <- data.frame(x = x_seq, y = dens)
     
     param_plot(d,
-               "Half-t prior for variance",
+               "Half-t prior for magnitude",
                "density",
-               "variance",
-               variance())
+               "magnitude",
+               magnitude())
   })
   
   # Inverse-Gamma prior for period plot
@@ -1065,22 +1066,22 @@ server <- function(input, output) {
     )
   })
   
-  # Half-t prior for variance plot
-  output$plot_variance_2 <- renderPlot({
-    observe(variance_2_draw())
+  # Half-t prior for magnitude plot
+  output$plot_magnitude_2 <- renderPlot({
+    observe(magnitude_2_draw())
     
     x_seq <- seq(0, 15, length.out = 400)
-    df <- input$variance_2_df
-    sc <- input$variance_2_scale
+    df <- input$magnitude_2_df
+    sc <- input$magnitude_2_scale
     dens <- half_t(df = df, scale = sc, x = x_seq)
     d <- data.frame(x = x_seq, y = dens)
     
     param_plot(
       d,
-      "Half-t prior for variance of the second kernel",
+      "Half-t prior for magnitude of the second kernel",
       "density",
-      "variance",
-      variance_2()
+      "magnitude",
+      magnitude_2()
     )
   })
   
@@ -1128,7 +1129,7 @@ server <- function(input, output) {
         for (i in 1:input$n_to_draw) {
           kernel_params <- hash(
             "kernel_1" = hash(
-              "variance" = variance()[i]
+              "magnitude" = magnitude()[i]
               ,
               "length_scale" = length_scale()[i]
               ,
@@ -1137,7 +1138,7 @@ server <- function(input, output) {
               "roughness" = as.numeric(input$nu)
             ),
             "kernel_2" = hash(
-              "variance" = variance_2()[i]
+              "magnitude" = magnitude_2()[i]
               ,
               "length_scale" = length_scale_2()[i]
               ,
@@ -1224,10 +1225,10 @@ server <- function(input, output) {
         
         if (constrained_check()) {
           x <- as.vector(gp_data()$x)
-          x_m <- matrix(x, length(x) / input$nfunc, input$nfunc)
+          x_m <- matrix(x, length(x) / n_func, n_func)
           x_draw <- x_m[, 1]
           dat <- gp_data()$f
-          funcs <- matrix(dat, length(dat) / input$nfunc, input$nfunc)
+          funcs <- matrix(dat, length(dat) / n_func, n_func)
           qtls <- apply(funcs, 1, quantile, probs =  c(0.05, 0.95))
           # confidence interval
           ribbon_data <- data.frame(x    = x_draw,
