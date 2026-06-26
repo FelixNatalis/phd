@@ -81,15 +81,16 @@ ui <- page_fillable(
       card(
         "Parameters",
         card(
-          input_switch("multiple_draws_switch", "Multiple draws mode"),
-          sliderInput("n_to_draw", "Number of Draws:", 1, n_draws, 1),
-          #         actionButton("make_draws", "Make draws")
+       #   input_switch("multiple_draws_switch", "Multiple draws mode"),
+          sliderInput("n_to_draw", "Number of parameter sets to draw:", 1, n_draws, 1),
+          numberInput("seed_value", "Choose seed value:", width = 120), 
+          actionButton("set_seed", "Set seed")
         ),
         card(
           card_header("Kernel", style = 'padding:4px; font-size:80%'),
           layout_columns(
             column(
-              width = 8,
+              width = 10,
               checkboxInput(
                 "is_combination",
                 "Use kernel combination?",
@@ -99,14 +100,24 @@ ui <- page_fillable(
               uiOutput("kernel_label_block"),
               actionButton("draw_kernel", "Draw kernel")
             ),
+             column(
+               width = 10,
+               checkboxInput(
+                 "is_formula",
+                 "Display kernel formula?",
+                 value = FALSE,
+                 width = NULL
+               ),
+               uiOutput("kernel_formula_block"),
+             ),
             plotOutput("plot_kernel", height = "250px")
           )
         ),
         card(
-          card_header("Hyperparameters for magnitude"),
+          card_header("Hyperparameters for magnitude (σ)"),
           layout_columns(
             column(
-              width = 8,
+              width = 6,
               sliderInput("magnitude_df", "Half-t degrees of freedom:", 1, 5, 4),
               sliderInput("magnitude_scale", "Half-t scale:", 1, 15, 1),
               actionButton("draw_magnitude", "Draw magnitude")
@@ -174,9 +185,9 @@ ui <- page_fillable(
       ),
       card(
         card_header("Specific function values"),
-        layout_columns(numberInput("x_1", "x₁"), numberInput("y_1", "y₁")),
-        layout_columns(numberInput("x_2", "x₂"), numberInput("y_2", "y₂")),
-        layout_columns(numberInput("x_3", "x₃"), numberInput("y_3", "y₃"))
+        layout_columns(column(width = 2,numberInput("x_1", "x₁")),column(width = 2, numberInput("y_1", "y₁"))),
+        layout_columns(column(width = 2,numberInput("x_2", "x₂")), column(width = 2,numberInput("y_2", "y₂"))),
+        layout_columns(column(width = 2,numberInput("x_3", "x₃")),column(width = 2, numberInput("y_3", "y₃")))
       )
     ),
     
@@ -309,6 +320,29 @@ server <- function(input, output) {
     }
   })
   
+  output$kernel_formula_block <- renderUI({
+    if (input$is_formula) {
+      formula = "aa"
+      kernel_1_formula = "a1"
+      kernel_2_formula = "a2"
+      operation_formula = "op"
+
+      if(input$is_combination){
+        kernel_1_formula = kernel_formulae[[input$kernel_label]]
+        kernel_2_formula = kernel_formulae[[input$kernel_label_2]]
+        operation_formula = kernel_operation_formulae[[input$operation]]
+        formula = paste(kernel_1_formula, kernel_2_formula, operation_formula, sep = "\n") 
+      }
+      else{
+        kernel_1_formula = kernel_formulae[[input$kernel_label]]
+        formula = paste(kernel_1_formula) 
+      }
+      layout_column_wrap(
+        renderText(formula) # TODO rendering of math and newlines
+      )
+    }
+  })
+  
   shinyjs::disable("draw_kernel")
   
   observe({
@@ -319,15 +353,15 @@ server <- function(input, output) {
     }
   })
   
-  shinyjs::disable("n_to_draw")
+  #shinyjs::disable("n_to_draw")
   
-  observe({
-    if (input$multiple_draws_switch) {
-      shinyjs::enable("n_to_draw")
-    } else {
-      shinyjs::disable("n_to_draw")
-    }
-  })
+  # observe({
+  #   if (input$multiple_draws_switch) {
+  #     shinyjs::enable("n_to_draw")
+  #   } else {
+  #     shinyjs::disable("n_to_draw")
+  #   }
+  # })
   
   # observe({
   #   if (!input$multiple_draws_switch) {
@@ -342,7 +376,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label) &&
         (input$kernel_label != "Linear")) {
       card(
-        card_header("Hyperparameters for length scale"),
+        card_header("Hyperparameters for length scale (λ)"),
         layout_columns(
           column(
             width = 8,
@@ -360,7 +394,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label) &&
         (input$kernel_label == "Periodic")) {
       card(
-        card_header("Hyperparameters for period"),
+        card_header("Hyperparameters for period (p)"),
         layout_columns(
           column(
             width = 8,
@@ -378,7 +412,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label) &&
         (input$kernel_label == "Matérn")) {
       card(
-        card_header("Hyperparameters for roughness"),
+        card_header("Hyperparameters for roughness (ν)"),
         sliderTextInput(
           "nu",
           "Value of roughness:",
@@ -396,7 +430,7 @@ server <- function(input, output) {
   output$dynamic_magnitude_2_choice <- renderUI({
     if (input$is_combination && !invalid(input$kernel_label_2)) {
       card(
-        card_header("Hyperparameters for magnitude of the second kernel"),
+        card_header("Hyperparameters for magnitude (σ) of the second kernel"),
         layout_columns(
           column(
             width = 8,
@@ -415,7 +449,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label_2) &&
         (input$kernel_label_2 != "Linear")) {
       card(
-        card_header("Hyperparameters for length scale of the second kernel"),
+        card_header("Hyperparameters for length scale (λ) of the second kernel"),
         layout_columns(
           column(
             width = 8,
@@ -433,7 +467,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label_2) &&
         (input$kernel_label_2 == "Periodic")) {
       card(
-        card_header("Hyperparameters for period of the second kernel"),
+        card_header("Hyperparameters for period (p) of the second kernel"),
         layout_columns(
           column(
             width = 8,
@@ -451,7 +485,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label_2) &&
         (input$kernel_label_2 == "Matérn")) {
       card(
-        card_header("Hyperparameters for roughness of the second kernel"),
+        card_header("Hyperparameters for roughness (ν) of the second kernel"),
         sliderTextInput(
           "nu_2",
           "Value of roughness:",
@@ -471,12 +505,12 @@ server <- function(input, output) {
         card_header("Changepoint kernel parameters"),
         sliderInput(
           "location",
-          "Location of changepoint:",
+          "Location of changepoint (x₀):",
           min = -100,
           max = 100,
           value = 0
         ),
-        sliderInput("steepness", "Steepness of changepoint:", 0.1, 10, 0.1)
+        sliderInput("steepness", "Steepness of changepoint (s):", 0.1, 10, 0.1)
       )
     }
   })
@@ -523,15 +557,15 @@ server <- function(input, output) {
   
   # drawing length scale on button click
   length_scale_draw <- eventReactive(input$draw_length_scale, {
-    if (!input$multiple_draws_switch) {
-      seed_val <- digest(
-        list(input$length_scale_alpha, input$length_scale_beta),
-        algo = "xxhash32",
-        serialize = TRUE
-      ) |>
-        substr(1, 7) |> strtoi(base = 16)
-      set.seed(seed_val)
-    }
+    # if (!input$multiple_draws_switch) {
+    #   seed_val <- digest(
+    #     list(input$length_scale_alpha, input$length_scale_beta),
+    #     algo = "xxhash32",
+    #     serialize = TRUE
+    #   ) |>
+    #     substr(1, 7) |> strtoi(base = 16)
+    #   set.seed(seed_val)
+    # }
     
     draws <- c()
     for (i in 1:input$n_to_draw) {
@@ -545,15 +579,15 @@ server <- function(input, output) {
   
   # drawing period on button click
   period_draw <- eventReactive(input$draw_period, {
-    if (!input$multiple_draws_switch) {
-      seed_val <- digest(
-        list(input$period_alpha, input$period_beta),
-        algo = "xxhash32",
-        serialize = TRUE
-      ) |>
-        substr(1, 7) |> strtoi(base = 16)
-      set.seed(seed_val)
-    }
+    # if (!input$multiple_draws_switch) {
+    #   seed_val <- digest(
+    #     list(input$period_alpha, input$period_beta),
+    #     algo = "xxhash32",
+    #     serialize = TRUE
+    #   ) |>
+    #     substr(1, 7) |> strtoi(base = 16)
+    #   set.seed(seed_val)
+    # }
     
     draws <- c()
     for (i in 1:input$n_to_draw) {
@@ -567,15 +601,15 @@ server <- function(input, output) {
   
   # drawing magnitude on button click
   magnitude_draw <- eventReactive(input$draw_magnitude, {
-    if (!input$multiple_draws_switch) {
-      seed_val <- digest(
-        list(input$magnitude_df, input$magnitude_scale),
-        algo = "xxhash32",
-        serialize = TRUE
-      ) |>
-        substr(1, 7) |> strtoi(base = 16)
-      set.seed(seed_val)
-    }
+    # if (!input$multiple_draws_switch) {
+    #   seed_val <- digest(
+    #     list(input$magnitude_df, input$magnitude_scale),
+    #     algo = "xxhash32",
+    #     serialize = TRUE
+    #   ) |>
+    #     substr(1, 7) |> strtoi(base = 16)
+    #   set.seed(seed_val)
+    # }
     
     draws <- c()
     for (i in 1:input$n_to_draw) {
@@ -591,15 +625,15 @@ server <- function(input, output) {
   # second kernel parameters
   # drawing length scale on button click
   length_scale_2_draw <- eventReactive(input$draw_length_scale_2, {
-    if (!input$multiple_draws_switch) {
-      seed_val <- digest(
-        list(input$length_scale_2_alpha, input$length_scale_2_beta),
-        algo = "xxhash32",
-        serialize = TRUE
-      ) |>
-        substr(1, 7) |> strtoi(base = 16)
-      set.seed(seed_val)
-    }
+    # if (!input$multiple_draws_switch) {
+    #   seed_val <- digest(
+    #     list(input$length_scale_2_alpha, input$length_scale_2_beta),
+    #     algo = "xxhash32",
+    #     serialize = TRUE
+    #   ) |>
+    #     substr(1, 7) |> strtoi(base = 16)
+    #   set.seed(seed_val)
+    # }
     
     draws <- c()
     for (i in 1:input$n_to_draw) {
@@ -615,15 +649,15 @@ server <- function(input, output) {
   
   # drawing period on button click
   period_2_draw <- eventReactive(input$draw_period_2, {
-    if (!input$multiple_draws_switch) {
-      seed_val <- digest(
-        list(input$period_2_alpha, input$period_2_beta),
-        algo = "xxhash32",
-        serialize = TRUE
-      ) |>
-        substr(1, 7) |> strtoi(base = 16)
-      set.seed(seed_val)
-    }
+    # if (!input$multiple_draws_switch) {
+    #   seed_val <- digest(
+    #     list(input$period_2_alpha, input$period_2_beta),
+    #     algo = "xxhash32",
+    #     serialize = TRUE
+    #   ) |>
+    #     substr(1, 7) |> strtoi(base = 16)
+    #   set.seed(seed_val)
+    # }
     
     draws <- c()
     for (i in 1:input$n_to_draw) {
@@ -637,15 +671,15 @@ server <- function(input, output) {
   
   # drawing magnitude on button click
   magnitude_2_draw <- eventReactive(input$draw_magnitude_2, {
-    if (!input$multiple_draws_switch) {
-      seed_val <- digest(
-        list(input$magnitude_2_df, input$magnitude_2_scale),
-        algo = "xxhash32",
-        serialize = TRUE
-      ) |>
-        substr(1, 7) |> strtoi(base = 16)
-      set.seed(seed_val)
-    }
+    # if (!input$multiple_draws_switch) {
+    #   seed_val <- digest(
+    #     list(input$magnitude_2_df, input$magnitude_2_scale),
+    #     algo = "xxhash32",
+    #     serialize = TRUE
+    #   ) |>
+    #     substr(1, 7) |> strtoi(base = 16)
+    #   set.seed(seed_val)
+    # }
     
     draws <- c()
     for (i in 1:input$n_to_draw) {
@@ -655,6 +689,10 @@ server <- function(input, output) {
     }
     rv$mag_2 <- TRUE
     magnitude_2(draws)
+  })
+  
+  seed_setting <- eventReactive(input$set_seed, {
+    set.seed(input$seed_value) # TODO not working
   })
   #-------------------------------------------------------------------------------
   ## GP redraw logic
@@ -916,15 +954,15 @@ server <- function(input, output) {
     if (!constrained_check()) {
       x_new <- seq(input$x_range[1], input$x_range[2], length.out = input$n_points)
       
-      if (!input$multiple_draws_switch) {
-        funcs_interp <- apply(gp_pool()$funcs[, func_sequence, drop = FALSE], 2, function(f) {
-          approx(gp_pool()$x_orig, f, xout = x_new)$y
-        })
-      } else{
+      # if (!input$multiple_draws_switch) {
+      #   funcs_interp <- apply(gp_pool()$funcs[, func_sequence, drop = FALSE], 2, function(f) {
+      #     approx(gp_pool()$x_orig, f, xout = x_new)$y
+      #   })
+      # } else{
         funcs_interp <- apply(gp_pool()$funcs, 2, function(f) {
           approx(gp_pool()$x_orig, f, xout = x_new)$y
         })
-      }
+  #    }
     }
     else{
       x_new <- seq(0, 1, 0.1)

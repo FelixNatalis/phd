@@ -36,6 +36,11 @@ kernel_labels <- c("Squared Exponential", "Matérn", "Linear", "Periodic")
 
 kernel_operation_labels <- c("add", "multiply", "changepoint")
 
+kernel_formulae <- hash(kernel_labels, c("se","matern", "linear", "periodic"))
+#kernel_formulae = hash(key = kernel_labels, values = c("se","matern", "linear", "periodic"))
+
+kernel_operation_formulae = hash(kernel_operation_labels, c("k1 + k2", "k1 * k2", "psi"))
+
 psi <- function(x, steepness, location) {
   return(1 / (1 + exp(-steepness * (x - location))))
 }
