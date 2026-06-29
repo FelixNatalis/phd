@@ -711,7 +711,7 @@ server <- function(input, output) {
         loc <- location()
         ste <- steepness()
         ope <- operation()
-        multi      <- isTRUE(input$multiple_draws_switch)
+        multi      <- isTRUE(TRUE)#input$multiple_draws_switch)
         old_params <- last_params()
         old_pool   <- last_pool()
         #TODO add bound parameters
@@ -743,49 +743,49 @@ server <- function(input, output) {
         } else{
           kernel_label <- input$kernel_label
         }
-        if (!multi) {
-          kernel_params <- hash(
-            "kernel_1" = hash(
-              "magnitude" = mag
-              ,
-              "length_scale" = len
-              ,
-              "period" = per
-              ,
-              "roughness" = ro
-            ),
-            "kernel_2" = hash(
-              "magnitude" = mag_2
-              ,
-              "length_scale" = len_2
-              ,
-              "period" = per_2
-              ,
-              "roughness" = ro_2
-            ),
-            "extra" = hash(
-              "operation" = input$operation,
-              "additional" = hash(
-                "location" = input$location,
-                "steepness" = input$steepness
-              )
-            )
-          )
-          
-          funcs <- replicate(
-            n_functions,
-            simulate_gp(
-              x_orig,
-              input$is_combination,
-              kernel_label,
-              kernel_params
-            )
-          )
-          
-          new_pool <- list(mode   = "single",
-                           x_orig = x_orig,
-                           funcs = funcs)
-        } else {
+        # if (!multi) {
+        #   kernel_params <- hash(
+        #     "kernel_1" = hash(
+        #       "magnitude" = mag
+        #       ,
+        #       "length_scale" = len
+        #       ,
+        #       "period" = per
+        #       ,
+        #       "roughness" = ro
+        #     ),
+        #     "kernel_2" = hash(
+        #       "magnitude" = mag_2
+        #       ,
+        #       "length_scale" = len_2
+        #       ,
+        #       "period" = per_2
+        #       ,
+        #       "roughness" = ro_2
+        #     ),
+        #     "extra" = hash(
+        #       "operation" = input$operation,
+        #       "additional" = hash(
+        #         "location" = input$location,
+        #         "steepness" = input$steepness
+        #       )
+        #     )
+        #   )
+        #   
+        #   funcs <- replicate(
+        #     n_functions,
+        #     simulate_gp(
+        #       x_orig,
+        #       input$is_combination,
+        #       kernel_label,
+        #       kernel_params
+        #     )
+        #   )
+        #   
+        #   new_pool <- list(mode   = "single",
+        #                    x_orig = x_orig,
+        #                    funcs = funcs)
+        # } else {
           n_draw <- input$n_to_draw
           
           funcs <- vapply(seq_len(n_draw), function(i) {
@@ -830,7 +830,7 @@ server <- function(input, output) {
             funcs  = funcs         
           )
           
-        }
+   #     }
         
         last_params(
           list(
@@ -1206,6 +1206,7 @@ server <- function(input, output) {
         
         for (i in 1:input$n_to_draw) {
           col_name <- paste0("k", i)
+          
           layer_data <- data.frame(x = kernel_data$dist, y = kernel_data[[col_name]])
           
           plot <- plot + geom_line(

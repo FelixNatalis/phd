@@ -3,31 +3,31 @@ library(gtools)
 ## Kernels
 
 # SE kernel function
-squared_exponential_kernel <- function(x1, x2, variance, length_scale) {
+squared_exponential_kernel <- function(x1, x2, magnitude, length_scale) {
   outer(x1, x2, function(a, b)
-    (variance^2 * exp(-(a - b)^2 / (2 * length_scale^2))))
+    (magnitude^2 * exp(-(a - b)^2 / (2 * length_scale^2))))
 }
 
 # Linear kernel function
-linear_kernel <- function(x1, x2, variance) {
+linear_kernel <- function(x1, x2, magnitude) {
   outer(x1, x2, function(a, b)
-    (variance^2 * a * b))
+    (magnitude^2 * a * b))
 }
 
 # Matérn kernel function
-matern_kernel <- function(x1, x2, variance, length_scale, roughness) {
+matern_kernel <- function(x1, x2, magnitude, length_scale, roughness) {
   distance <- outer(x1, x2, function(a, b)
     abs(a - b))
   term <- sqrt(2 * roughness) * distance / length_scale
-  K <- variance^2 * (2^(1 - roughness) / gamma(roughness)) * (term^roughness) * besselK(term, roughness)
-  K[distance == 0] <- variance^2   # Handle the distance = 0 case explicitly
+  K <- magnitude^2 * (2^(1 - roughness) / gamma(roughness)) * (term^roughness) * besselK(term, roughness)
+  K[distance == 0] <- magnitude^2   # Handle the distance = 0 case explicitly
   K
 }
 
 # Periodic kernel function
-periodic_kernel <- function(x1, x2, variance, length_scale, period) {
+periodic_kernel <- function(x1, x2, magnitude, length_scale, period) {
   outer(x1, x2, function(a, b)
-    (variance^2 * exp(
+    (magnitude^2 * exp(
       -2 * sin(pi * abs(a - b) / period)^2 / length_scale^2
     )))
 }
@@ -37,7 +37,6 @@ kernel_labels <- c("Squared Exponential", "Matérn", "Linear", "Periodic")
 kernel_operation_labels <- c("add", "multiply", "changepoint")
 
 kernel_formulae <- hash(kernel_labels, c("se","matern", "linear", "periodic"))
-#kernel_formulae = hash(key = kernel_labels, values = c("se","matern", "linear", "periodic"))
 
 kernel_operation_formulae = hash(kernel_operation_labels, c("k1 + k2", "k1 * k2", "psi"))
 
@@ -76,6 +75,7 @@ kernel_wrapper <- function(is_combination,
                            x1,
                            x2,
                            params) {
+  
   if (is_combination) {
     extra_params <- params[["extra"]]
     operation <- extra_params[["operation"]]
@@ -98,17 +98,17 @@ kernel_wrapper <- function(is_combination,
 }
 
 simple_kernel_wrapper <- function(kernel_label, x1, x2, params) {
-  variance = params[["variance"]]
+  magnitude = params[["magnitude"]]
   length_scale = params[["length_scale"]]
   roughness = params[["roughness"]]
   period = params[["period"]]
   
   if (kernel_label == "Linear") {
-    if (!invalid(x1) & !invalid(x2) & !invalid(variance)) {
+    if (!invalid(x1) & !invalid(x2) & !invalid(magnitude)) {
       return(linear_kernel(
         x1 = x1,
         x2 = x2,
-        variance = variance
+        magnitude = magnitude
       ))
     }
   }
@@ -116,12 +116,12 @@ simple_kernel_wrapper <- function(kernel_label, x1, x2, params) {
   if (kernel_label == "Squared Exponential") {
     if (!invalid(x1) &
         !invalid(x2) &
-        !invalid(variance) & !invalid(length_scale)) {
+        !invalid(magnitude) & !invalid(length_scale)) {
       return(
         squared_exponential_kernel(
           x1 = x1,
           x2 = x2,
-          variance = variance,
+          magnitude = magnitude,
           length_scale = length_scale
         )
       )
@@ -131,13 +131,13 @@ simple_kernel_wrapper <- function(kernel_label, x1, x2, params) {
   if (kernel_label == "Matérn") {
     if (!invalid(x1) &
         !invalid(x2) &
-        !invalid(variance) &
+        !invalid(magnitude) &
         !invalid(length_scale) & !invalid(roughness)) {
       return(
         matern_kernel(
           x1 = x1,
           x2 = x2,
-          variance = variance,
+          magnitude = magnitude,
           length_scale = length_scale,
           roughness = roughness
         )
@@ -148,19 +148,20 @@ simple_kernel_wrapper <- function(kernel_label, x1, x2, params) {
   if (kernel_label == "Periodic") {
     if (!invalid(x1) &
         !invalid(x2) &
-        !invalid(variance) &
+        !invalid(magnitude) &
         !invalid(length_scale) & !invalid(period)) {
       return(
         periodic_kernel(
           x1 = x1,
           x2 = x2,
-          variance = variance,
+          magnitude = magnitude,
           length_scale = length_scale,
           period = period
         )
       )
     }
   }
+  print("Some of the kernel parameters are invalid, correct them and try again.")
 }
 
 #-------------------------------------------------------------------------------
@@ -213,7 +214,7 @@ simulate_constrained_gp <- function(x_train,
                                     n_points = 50,
                                     data_noise = 1.5) {
   k_1 <- kernel_params[["kernel_1"]]$kernel_1
-  variance <- k_1[["variance"]]
+  magnitude <- k_1[["magnitude"]]
   length_scale <- k_1[["length_scale"]]
   roughness <- k_1[["roughness"]]
   
@@ -239,7 +240,7 @@ simulate_constrained_gp <- function(x_train,
   }
   
   model$kernParam$type = kernel_type
-  model$kernParam$par <- c(variance, length_scale)
+  model$kernParam$par <- c(magnitude, length_scale)
   model$varnoise <- data_noise
   model <- augment(model)
   
