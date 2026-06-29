@@ -71,7 +71,8 @@ ui <- page_fillable(
   }
   .card-body {
     display: inline-block;
-  }"
+  }
+"
   ),
   
   useShinyjs(),
@@ -86,33 +87,28 @@ ui <- page_fillable(
           numberInput("seed_value", "Choose seed value:", width = 120), 
           actionButton("set_seed", "Set seed")
         ),
-        card(
-          card_header("Kernel", style = 'padding:4px; font-size:80%'),
-          layout_columns(
-            column(
-              width = 10,
-              checkboxInput(
-                "is_combination",
-                "Use kernel combination?",
-                value = FALSE,
-                width = NULL
-              ),
-              uiOutput("kernel_label_block"),
-              actionButton("draw_kernel", "Draw kernel")
-            ),
-             column(
-               width = 10,
-               checkboxInput(
-                 "is_formula",
-                 "Display kernel formula?",
-                 value = FALSE,
-                 width = NULL
-               ),
-               uiOutput("kernel_formula_block"),
-             ),
-            plotOutput("plot_kernel", height = "250px")
-          )
-        ),
+       card(
+         card_header("Kernel", style = 'padding:4px; font-size:80%'),
+         layout_columns(
+           col_widths = c(3, 3, 6),
+           gap = "0.1rem",
+           column(
+             width = 10,
+             checkboxInput("is_combination", "Use kernel combination?", value = FALSE),
+             uiOutput("kernel_label_block"),
+             actionButton("draw_kernel", "Draw kernel")
+           ),
+           column(
+             width = 10,
+             checkboxInput("is_formula", "Display kernel formula?", value = FALSE),
+             div(
+               style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+               uiOutput("kernel_formula_block")
+             )
+           ),
+           plotOutput("plot_kernel", height = "250px")
+         )
+       ),
         card(
           card_header("Hyperparameters for magnitude (σ)"),
           layout_columns(
@@ -322,27 +318,25 @@ server <- function(input, output) {
   
   output$kernel_formula_block <- renderUI({
     if (input$is_formula) {
-      formula = "aa"
-      kernel_1_formula = "a1"
-      kernel_2_formula = "a2"
-      operation_formula = "op"
-
-      if(input$is_combination){
-        kernel_1_formula = kernel_formulae[[input$kernel_label]]
-        kernel_2_formula = kernel_formulae[[input$kernel_label_2]]
-        operation_formula = kernel_operation_formulae[[input$operation]]
-        formula = paste(kernel_1_formula, kernel_2_formula, operation_formula, sep = "\n") 
+        kernel_1_formula <- kernel_formulae[[input$kernel_label]]    
+        
+      if (input$is_combination) {
+        kernel_2_formula <- kernel_formulae[[input$kernel_label_2]]
+        operation_formula <- kernel_operation_formulae[[input$operation]]
+        
+        withMathJax(
+          p(kernel_1_formula),
+          p(kernel_2_formula),
+          p(operation_formula)
+        )
+      } else {
+        withMathJax(
+          p(kernel_1_formula)
+        )
       }
-      else{
-        kernel_1_formula = kernel_formulae[[input$kernel_label]]
-        formula = paste(kernel_1_formula) 
-      }
-      layout_column_wrap(
-        renderText(formula) # TODO rendering of math and newlines
-      )
     }
   })
-  
+
   shinyjs::disable("draw_kernel")
   
   observe({

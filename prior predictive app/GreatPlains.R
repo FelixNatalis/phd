@@ -36,9 +36,17 @@ kernel_labels <- c("Squared Exponential", "Matérn", "Linear", "Periodic")
 
 kernel_operation_labels <- c("add", "multiply", "changepoint")
 
-kernel_formulae <- hash(kernel_labels, c("se","matern", "linear", "periodic"))
+kernel_formulae <- hash(kernel_labels, c("\\(k(x, x') = \\sigma^2\\exp(\\frac{1}{\\lambda^2}(x - x')^2)\\)",
+                                         "\\(k(x, x') = \\sigma^2\\frac{2^{1 - \\nu}}{\\Gamma(\\nu)} (\\frac{\\sqrt{2\\nu}|x - x'|}{\\lambda})^\\nuK_{\\nu}\\frac{\\sqrt{2\\nu}|x - x'|}{\\lambda}\\)
+                                         where \\(\\Gamma\\) is the gamma function, \\(K_{\\nu}\\) is a modified Bessel function", 
+                                         "\\(k(x, x') = \\sigma^2xx'\\)", 
+                                         "\\(k(x, x') = \\sigma^2\\exp(-\\frac{2\\sin^2{\\frac{\\pi|x - x'|}{p}}}{\\lambda^2}) \\)"))
 
-kernel_operation_formulae = hash(kernel_operation_labels, c("k1 + k2", "k1 * k2", "psi"))
+kernel_operation_formulae = hash(kernel_operation_labels, c("\\( k(x, x') = k_1(x, x') + k_2(x, x') \\)", 
+"\\( k(x, x') = k_1(x, x')k_2(x, x') \\)",
+"\\( k(x, x') = k_1(x, x')\\psi + k_2(x, x')\\hat\\psi\\)
+\\(\\psi = \\psi(x)\\psi(x')\\)
+\\(\\hat\\psi = (1 - \\psi(x))(1 - \\psi(x'))\\)"))
 
 psi <- function(x, steepness, location) {
   return(1 / (1 + exp(-steepness * (x - location))))
