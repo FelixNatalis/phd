@@ -82,7 +82,6 @@ ui <- page_fillable(
       card(
         "Parameters",
         card(
-       #   input_switch("multiple_draws_switch", "Multiple draws mode"),
           sliderInput("n_to_draw", "Number of parameter sets to draw:", 1, n_draws, 1),
           numberInput("seed_value", "Choose seed value:", width = 120), 
           actionButton("set_seed", "Set seed")
@@ -191,7 +190,6 @@ ui <- page_fillable(
       card(
         card_header("Other parameters"),
         #sliderInput("sigma_n", "Noise amplitude:", 0, 15, 1),
-   #     sliderInput("nfunc", "Number of functions to draw:", 1, n_functions, 5),
         sliderInput(
           "n_points",
           "Number of grid points on the X-scale:",
@@ -318,18 +316,19 @@ server <- function(input, output) {
   
   output$kernel_formula_block <- renderUI({
     if (input$is_formula) {
-        kernel_1_formula <- kernel_formulae[[input$kernel_label]]    
-        
       if (input$is_combination) {
-        kernel_2_formula <- kernel_formulae[[input$kernel_label_2]]
+        kernel_1_formula <- paste("\\(k_1(x, x') = ", kernel_formulae[[input$kernel_label]])
+        kernel_2_formula <- paste("\\(k_2(x, x') = ", kernel_formulae[[input$kernel_label_2]])
         operation_formula <- kernel_operation_formulae[[input$operation]]
         
         withMathJax(
+          p(operation_formula),
           p(kernel_1_formula),
-          p(kernel_2_formula),
-          p(operation_formula)
+          p(kernel_2_formula)
         )
       } else {
+        kernel_1_formula <- paste("\\(k(x, x') = ", kernel_formulae[[input$kernel_label]])
+        
         withMathJax(
           p(kernel_1_formula)
         )
@@ -346,25 +345,6 @@ server <- function(input, output) {
       shinyjs::disable("draw_kernel")
     }
   })
-  
-  #shinyjs::disable("n_to_draw")
-  
-  # observe({
-  #   if (input$multiple_draws_switch) {
-  #     shinyjs::enable("n_to_draw")
-  #   } else {
-  #     shinyjs::disable("n_to_draw")
-  #   }
-  # })
-  
-  # observe({
-  #   if (!input$multiple_draws_switch) {
-  #     shinyjs::enable("nfunc")
-  #   } else {
-  #     shinyjs::disable("nfunc")
-  #   }
-  # })
-  
   
   output$dynamic_length_scale_choice <- renderUI({
     if (!invalid(input$kernel_label) &&
@@ -551,16 +531,6 @@ server <- function(input, output) {
   
   # drawing length scale on button click
   length_scale_draw <- eventReactive(input$draw_length_scale, {
-    # if (!input$multiple_draws_switch) {
-    #   seed_val <- digest(
-    #     list(input$length_scale_alpha, input$length_scale_beta),
-    #     algo = "xxhash32",
-    #     serialize = TRUE
-    #   ) |>
-    #     substr(1, 7) |> strtoi(base = 16)
-    #   set.seed(seed_val)
-    # }
-    
     draws <- c()
     for (i in 1:input$n_to_draw) {
       draw <- inverse_gamma(alpha = input$length_scale_alpha,
@@ -573,16 +543,6 @@ server <- function(input, output) {
   
   # drawing period on button click
   period_draw <- eventReactive(input$draw_period, {
-    # if (!input$multiple_draws_switch) {
-    #   seed_val <- digest(
-    #     list(input$period_alpha, input$period_beta),
-    #     algo = "xxhash32",
-    #     serialize = TRUE
-    #   ) |>
-    #     substr(1, 7) |> strtoi(base = 16)
-    #   set.seed(seed_val)
-    # }
-    
     draws <- c()
     for (i in 1:input$n_to_draw) {
       draw <- inverse_gamma(alpha = input$period_alpha,
@@ -595,16 +555,6 @@ server <- function(input, output) {
   
   # drawing magnitude on button click
   magnitude_draw <- eventReactive(input$draw_magnitude, {
-    # if (!input$multiple_draws_switch) {
-    #   seed_val <- digest(
-    #     list(input$magnitude_df, input$magnitude_scale),
-    #     algo = "xxhash32",
-    #     serialize = TRUE
-    #   ) |>
-    #     substr(1, 7) |> strtoi(base = 16)
-    #   set.seed(seed_val)
-    # }
-    
     draws <- c()
     for (i in 1:input$n_to_draw) {
       draw <- half_t(df = input$magnitude_df,
@@ -619,16 +569,6 @@ server <- function(input, output) {
   # second kernel parameters
   # drawing length scale on button click
   length_scale_2_draw <- eventReactive(input$draw_length_scale_2, {
-    # if (!input$multiple_draws_switch) {
-    #   seed_val <- digest(
-    #     list(input$length_scale_2_alpha, input$length_scale_2_beta),
-    #     algo = "xxhash32",
-    #     serialize = TRUE
-    #   ) |>
-    #     substr(1, 7) |> strtoi(base = 16)
-    #   set.seed(seed_val)
-    # }
-    
     draws <- c()
     for (i in 1:input$n_to_draw) {
       draw <- inverse_gamma(
@@ -643,16 +583,6 @@ server <- function(input, output) {
   
   # drawing period on button click
   period_2_draw <- eventReactive(input$draw_period_2, {
-    # if (!input$multiple_draws_switch) {
-    #   seed_val <- digest(
-    #     list(input$period_2_alpha, input$period_2_beta),
-    #     algo = "xxhash32",
-    #     serialize = TRUE
-    #   ) |>
-    #     substr(1, 7) |> strtoi(base = 16)
-    #   set.seed(seed_val)
-    # }
-    
     draws <- c()
     for (i in 1:input$n_to_draw) {
       draw <- inverse_gamma(alpha = input$period_2_alpha,
@@ -665,16 +595,6 @@ server <- function(input, output) {
   
   # drawing magnitude on button click
   magnitude_2_draw <- eventReactive(input$draw_magnitude_2, {
-    # if (!input$multiple_draws_switch) {
-    #   seed_val <- digest(
-    #     list(input$magnitude_2_df, input$magnitude_2_scale),
-    #     algo = "xxhash32",
-    #     serialize = TRUE
-    #   ) |>
-    #     substr(1, 7) |> strtoi(base = 16)
-    #   set.seed(seed_val)
-    # }
-    
     draws <- c()
     for (i in 1:input$n_to_draw) {
       draw <- half_t(df = input$magnitude_2_df,
@@ -687,6 +607,10 @@ server <- function(input, output) {
   
   seed_setting <- eventReactive(input$set_seed, {
     set.seed(input$seed_value) # TODO not working
+  })
+  
+  observeEvent(input$set_seed, {
+    set.seed(input$seed_value)
   })
   #-------------------------------------------------------------------------------
   ## GP redraw logic
@@ -737,49 +661,7 @@ server <- function(input, output) {
         } else{
           kernel_label <- input$kernel_label
         }
-        # if (!multi) {
-        #   kernel_params <- hash(
-        #     "kernel_1" = hash(
-        #       "magnitude" = mag
-        #       ,
-        #       "length_scale" = len
-        #       ,
-        #       "period" = per
-        #       ,
-        #       "roughness" = ro
-        #     ),
-        #     "kernel_2" = hash(
-        #       "magnitude" = mag_2
-        #       ,
-        #       "length_scale" = len_2
-        #       ,
-        #       "period" = per_2
-        #       ,
-        #       "roughness" = ro_2
-        #     ),
-        #     "extra" = hash(
-        #       "operation" = input$operation,
-        #       "additional" = hash(
-        #         "location" = input$location,
-        #         "steepness" = input$steepness
-        #       )
-        #     )
-        #   )
-        #   
-        #   funcs <- replicate(
-        #     n_functions,
-        #     simulate_gp(
-        #       x_orig,
-        #       input$is_combination,
-        #       kernel_label,
-        #       kernel_params
-        #     )
-        #   )
-        #   
-        #   new_pool <- list(mode   = "single",
-        #                    x_orig = x_orig,
-        #                    funcs = funcs)
-        # } else {
+        
           n_draw <- input$n_to_draw
           
           funcs <- vapply(seq_len(n_draw), function(i) {
@@ -816,16 +698,13 @@ server <- function(input, output) {
                         kernel_label,
                         kernel_params_i)
           }, numeric(length(x_orig)))
-          # result is still an n_points × n_draw matrix, one column per param set
           
           new_pool <- list(
             mode   = "multi",
             x_orig = x_orig,
             funcs  = funcs         
           )
-          
-   #     }
-        
+
         last_params(
           list(
             kernel_prev = kernel,
@@ -912,9 +791,6 @@ server <- function(input, output) {
         "upper_bound" = input$upper_bound
         #, "monotonicity_type" = input$monotonicity # TODO is there a monotonically decreasing option?
       )
-      # cat(paste(roughness()))
-      #cat(paste("\nentering simulation\n"))
-      
       
       funcs <- simulate_constrained_gp(
         x_train = x_train,
@@ -923,12 +799,11 @@ server <- function(input, output) {
         kernel_params = kernel_params,
         constraints = constraints,
         constraint_params = constraint_params,
-        n_functions = n_func,#input$nfunc,
+        n_functions = n_func,
         x_draw = x_draw,
         data_noise = data_noise
       )
-      # cat(paste("\n\n","funcs in pool", funcs, "\n\n"))
-      #cat(paste("\nexited simulation\n"))
+
       funcs
     }
   })
@@ -939,24 +814,13 @@ server <- function(input, output) {
     req(gp_pool())
     pool  <- gp_pool()
     func_sequence <- seq_len(input$n_to_draw)
-    # if(input$multiple_draws_switch){
-    #   func_sequence <- seq_len(input$n_to_draw)
-    # }else{
-    #   func_sequence <-seq_len()#input$nfunc)
-    # }
     
     if (!constrained_check()) {
       x_new <- seq(input$x_range[1], input$x_range[2], length.out = input$n_points)
       
-      # if (!input$multiple_draws_switch) {
-      #   funcs_interp <- apply(gp_pool()$funcs[, func_sequence, drop = FALSE], 2, function(f) {
-      #     approx(gp_pool()$x_orig, f, xout = x_new)$y
-      #   })
-      # } else{
         funcs_interp <- apply(gp_pool()$funcs, 2, function(f) {
           approx(gp_pool()$x_orig, f, xout = x_new)$y
         })
-  #    }
     }
     else{
       x_new <- seq(0, 1, 0.1)
@@ -989,7 +853,6 @@ server <- function(input, output) {
       labs(title = title, y = y_label, x = x_label) +
       theme_minimal(base_size = 14)
     
-    # cat(paste("\n ls vals in plot \n", observation_value, "\n"))
     if (!invalid(observation_value)) {
       for (i in 1:length(observation_value)) {
         plot <- plot +
@@ -1017,8 +880,6 @@ server <- function(input, output) {
   # Inverse-Gamma prior for length_scale plot
   output$plot_length_scale <- renderPlot({
     observe(length_scale_draw())
-    
-    #  cat(paste("\n ls vals in this plot \n", length_scale(), "\n"))
     
     x_seq <- seq(1e-6, 15, length.out = 400)
     alpha <- input$length_scale_alpha
