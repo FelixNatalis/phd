@@ -53,6 +53,7 @@ ui <- page_fillable(
   .checkbox {
       font-size:85%;
       line-height: 16px;
+      padding: 4px;
     }
   .selectize-dropdown {
     font-size:80%;
@@ -115,7 +116,9 @@ ui <- page_fillable(
               width = 6,
               sliderInput("magnitude_df", "Half-t degrees of freedom:", 1, 5, 4),
               sliderInput("magnitude_scale", "Half-t scale:", 1, 15, 1),
-              actionButton("draw_magnitude", "Draw magnitude")
+              actionButton("draw_magnitude", "Draw magnitude"),
+              checkboxInput("fix_magnitude", "Fix at value", value = FALSE),
+              sliderInput(inputId = "magnitude_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
             )
             ,
             plotOutput("plot_magnitude", height = "250px")
@@ -255,7 +258,7 @@ server <- function(input, output) {
       || input$kernel_label == "Periodic"
       && rv$mag && rv$ls && rv$per
       || input$kernel_label == "Squared Exponential"
-      && rv$mag && rv$ls
+      && (rv$mag || input$fix_magnitude)&& ( rv$ls) # TODO set fixed options as acceptable
       || input$kernel_label == "Matérn"
       && rv$mag && rv$ls
     )
@@ -343,6 +346,20 @@ server <- function(input, output) {
       shinyjs::enable("draw_kernel")
     } else {
       shinyjs::disable("draw_kernel")
+    }
+  })
+  
+  observe({
+    if (input$fix_magnitude) {
+      shinyjs::enable("magnitude_fixed_value")
+      shinyjs::disable("draw_magnitude")
+      shinyjs::disable("magnitude_df")
+      shinyjs::disable("magnitude_scale")
+    } else {
+      shinyjs::disable("magnitude_fixed_value")
+      shinyjs::enable("draw_magnitude")
+      shinyjs::enable("magnitude_df")
+      shinyjs::enable("magnitude_scale")
     }
   })
   
@@ -554,13 +571,18 @@ server <- function(input, output) {
   })
   
   # drawing magnitude on button click
-  magnitude_draw <- eventReactive(input$draw_magnitude, {
-    draws <- c()
-    for (i in 1:input$n_to_draw) {
-      draw <- half_t(df = input$magnitude_df,
-                     scale = input$magnitude_scale)
-      draws <- append(draws, draw)
+  magnitude_draw <- eventReactive(c(input$draw_magnitude, input$magnitude_fixed_value), {
+    if(!input$fix_magnitude){
+      draws <- c()
+      for (i in 1:input$n_to_draw) {
+        draw <- half_t(df = input$magnitude_df,
+                       scale = input$magnitude_scale)
+        draws <- append(draws, draw)
+      }
+    }else{
+      draws <- rep(input$magnitude_fixed_value, input$n_to_draw)
     }
+    
     rv$mag <- TRUE
     magnitude(draws)
   })
