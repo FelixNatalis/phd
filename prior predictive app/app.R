@@ -354,6 +354,11 @@ server <- function(input, output) {
   })
   
   shinyjs::disable("magnitude_fixed_value")
+  shinyjs::disable("length_scale_fixed_value")
+  shinyjs::disable("period_fixed_value")
+  shinyjs::disable("magnitude_2_fixed_value")   
+  shinyjs::disable("period_2_fixed_value")
+  shinyjs::disable("length_scale_2_fixed_value")
   
   observe({
     if (input$is_fix_magnitude) {
@@ -369,9 +374,8 @@ server <- function(input, output) {
     }
   })
   
-  shinyjs::disable("length_scale_fixed_value")
-  
   observe({
+    req(!is.null(input$is_fix_length_scale))
     if (input$is_fix_length_scale) {
       shinyjs::disable("draw_length_scale")
       shinyjs::disable("length_scale_alpha")
@@ -385,9 +389,8 @@ server <- function(input, output) {
     }
   })
   
-  shinyjs::disable("period_fixed_value")
-  
   observe({
+    req(!is.null(input$is_fix_period))
     if (input$is_fix_period) {
       shinyjs::disable("draw_period")
       shinyjs::disable("period_alpha")
@@ -400,8 +403,6 @@ server <- function(input, output) {
       shinyjs::disable("period_fixed_value")
     }
   })
- 
-  shinyjs::disable("magnitude_2_fixed_value") 
   
   observe({
     req(!is.null(input$is_fix_magnitude_2))
@@ -418,9 +419,8 @@ server <- function(input, output) {
     }
   })
   
-  shinyjs::disable("length_scale_2_fixed_value")
-  
   observe({
+    req(!is.null(input$is_fix_length_scale_2))
     if (input$is_fix_length_scale_2) {
       shinyjs::disable("draw_length_scale_2")
       shinyjs::disable("length_scale_2_alpha")
@@ -434,9 +434,8 @@ server <- function(input, output) {
     }
   })
   
-  shinyjs::disable("period_2_fixed_value")
-  
   observe({
+    req(!is.null(input$is_fix_period_2))
     if (input$is_fix_period_2) {
       shinyjs::disable("draw_period_2")
       shinyjs::disable("period_2_alpha")
