@@ -294,6 +294,10 @@ server <- function(input, output) {
         input$is_monotonicity || input$is_convexity
     )
   }
+  
+  observeEvent(input$set_seed, {
+    set.seed(input$seed_value)
+  })
   #-------------------------------------------------------------------------------
   ## Dynamic ui elements
   
@@ -340,7 +344,6 @@ server <- function(input, output) {
   })
 
   shinyjs::disable("draw_kernel")
-  shinyjs::disable("magnitude_fixed_value")
   
   observe({
     if (condition_parameters_check()) {
@@ -349,6 +352,8 @@ server <- function(input, output) {
       shinyjs::disable("draw_kernel")
     }
   })
+  
+  shinyjs::disable("magnitude_fixed_value")
   
   observe({
     if (input$is_fix_magnitude) {
@@ -364,6 +369,87 @@ server <- function(input, output) {
     }
   })
   
+  shinyjs::disable("length_scale_fixed_value")
+  
+  observe({
+    if (input$is_fix_length_scale) {
+      shinyjs::disable("draw_length_scale")
+      shinyjs::disable("length_scale_alpha")
+      shinyjs::disable("length_scale_beta")
+      shinyjs::enable("length_scale_fixed_value")
+    } else {
+      shinyjs::enable("draw_length_scale")
+      shinyjs::enable("length_scale_alpha")
+      shinyjs::enable("length_scale_beta")
+      shinyjs::disable("length_scale_fixed_value")
+    }
+  })
+  
+  shinyjs::disable("period_fixed_value")
+  
+  observe({
+    if (input$is_fix_period) {
+      shinyjs::disable("draw_period")
+      shinyjs::disable("period_alpha")
+      shinyjs::disable("period_beta")
+      shinyjs::enable("period_fixed_value")
+    } else {
+      shinyjs::enable("draw_period")
+      shinyjs::enable("period_alpha")
+      shinyjs::enable("period_beta")
+      shinyjs::disable("period_fixed_value")
+    }
+  })
+ 
+  shinyjs::disable("magnitude_2_fixed_value") 
+  
+  observe({
+    req(!is.null(input$is_fix_magnitude_2))
+    if (input$is_fix_magnitude_2) {
+      shinyjs::disable("draw_magnitude_2")
+      shinyjs::disable("magnitude_2_df")
+      shinyjs::disable("magnitude_2_scale")
+      shinyjs::enable("magnitude_2_fixed_value")
+    } else {
+      shinyjs::enable("draw_magnitude_2")
+      shinyjs::enable("magnitude_2_df")
+      shinyjs::enable("magnitude_2_scale")
+      shinyjs::disable("magnitude_2_fixed_value")
+    }
+  })
+  
+  shinyjs::disable("length_scale_2_fixed_value")
+  
+  observe({
+    if (input$is_fix_length_scale_2) {
+      shinyjs::disable("draw_length_scale_2")
+      shinyjs::disable("length_scale_2_alpha")
+      shinyjs::disable("length_scale_2_beta")
+      shinyjs::enable("length_scale_2_fixed_value")
+    } else {
+      shinyjs::enable("draw_length_scale_2")
+      shinyjs::enable("length_scale_2_alpha")
+      shinyjs::enable("length_scale_2_beta")
+      shinyjs::disable("length_scale_2_fixed_value")
+    }
+  })
+  
+  shinyjs::disable("period_2_fixed_value")
+  
+  observe({
+    if (input$is_fix_period_2) {
+      shinyjs::disable("draw_period_2")
+      shinyjs::disable("period_2_alpha")
+      shinyjs::disable("period_2_beta")
+      shinyjs::enable("period_2_fixed_value")
+    } else {
+      shinyjs::enable("draw_period_2")
+      shinyjs::enable("period_2_alpha")
+      shinyjs::enable("period_2_beta")
+      shinyjs::disable("period_2_fixed_value")
+    }
+  })
+  
   output$dynamic_length_scale_choice <- renderUI({
     if (!invalid(input$kernel_label) &&
         (input$kernel_label != "Linear")) {
@@ -374,7 +460,9 @@ server <- function(input, output) {
             width = 8,
             sliderInput("length_scale_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("length_scale_beta", "Inverse-Gamma beta:", 1, 15, 1),
-            actionButton("draw_length_scale", "Draw length scale")
+            actionButton("draw_length_scale", "Draw length scale"),
+            checkboxInput(inputId = "is_fix_length_scale", "Fix length scale at a constant value?", value = FALSE),
+            sliderInput(inputId = "length_scale_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
           ),
           plotOutput("plot_length_scale", height = "250px")
         )
@@ -392,7 +480,9 @@ server <- function(input, output) {
             width = 8,
             sliderInput("period_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("period_beta", "Inverse-Gamma beta:", 1, 15, 1),
-            actionButton("draw_period", "Draw period")
+            actionButton("draw_period", "Draw period"),
+            checkboxInput(inputId = "is_fix_period", "Fix period at a constant value?", value = FALSE),
+            sliderInput(inputId = "period_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
           ),
           plotOutput("plot_period", height = "250px")
         )
@@ -428,7 +518,9 @@ server <- function(input, output) {
             width = 8,
             sliderInput("magnitude_2_df", "Half-t degrees of freedom:", 1, 5, 4),
             sliderInput("magnitude_2_scale", "Half-t scale:", 1, 15, 1),
-            actionButton("draw_magnitude_2", "Draw magnitude")
+            actionButton("draw_magnitude_2", "Draw magnitude"),
+            checkboxInput(inputId = "is_fix_magnitude_2", "Fix magnitude at a constant value?", value = FALSE),
+            sliderInput(inputId = "magnitude_2_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
           )
           ,
           plotOutput("plot_magnitude_2", height = "250px")
@@ -447,7 +539,9 @@ server <- function(input, output) {
             width = 8,
             sliderInput("length_scale_2_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("length_scale_2_beta", "Inverse-Gamma beta:", 1, 15, 1),
-            actionButton("draw_length_scale_2", "Draw length scale")
+            actionButton("draw_length_scale_2", "Draw length scale"),
+            checkboxInput(inputId = "is_fix_length_scale_2", "Fix length scale at a constant value?", value = FALSE),
+            sliderInput(inputId = "length_scale_2_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
           ),
           plotOutput("plot_length_scale_2", height = "250px")
         )
@@ -465,7 +559,9 @@ server <- function(input, output) {
             width = 8,
             sliderInput("period_2_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("period_2_beta", "Inverse-Gamma beta:", 1, 15, 1),
-            actionButton("draw_period_2", "Draw period")
+            actionButton("draw_period_2", "Draw period"),
+            checkboxInput(inputId = "is_fix_period_2", "Fix period at a constant value?", value = FALSE),
+            sliderInput(inputId = "period_2_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
           ),
           plotOutput("plot_period_2", height = "250px")
         )
@@ -559,6 +655,14 @@ server <- function(input, output) {
     length_scale(draws)
   })
   
+  # fixing length scale in the constant regime
+  length_scale_fixed <- observeEvent(input$length_scale_fixed_value, {
+    req(input$is_fix_length_scale)
+    draws <- rep(input$length_scale_fixed_value, input$n_to_draw)
+    rv$ls <- TRUE
+    length_scale(draws)
+  })
+  
   # drawing period on button click
   period_draw <- eventReactive(input$draw_period, {
     draws <- c()
@@ -567,6 +671,14 @@ server <- function(input, output) {
                             beta = input$period_beta)
       draws <- append(draws, draw)
     }
+    rv$per <- TRUE
+    period(draws)
+  })
+  
+  # fixing period in the constant regime
+  period_fixed <- observeEvent(input$period_fixed_value, {
+    req(input$is_fix_period)
+    draws <- rep(input$period_fixed_value, input$n_to_draw)
     rv$per <- TRUE
     period(draws)
   })
@@ -584,6 +696,7 @@ server <- function(input, output) {
     magnitude(draws)
   })
   
+  # fixing magnitude in the constant regime
   magnitude_fixed <- observeEvent(input$magnitude_fixed_value, {
     req(input$is_fix_magnitude)
     draws <- rep(input$magnitude_fixed_value, input$n_to_draw)
@@ -607,6 +720,15 @@ server <- function(input, output) {
     length_scale_2(draws)
   })
   
+  # fixing length scale 2 in the constant regime
+  length_scale_2_fixed <- observeEvent(input$length_scale_2_fixed_value, {
+    req(input$is_fix_length_scale_2)
+    draws <- rep(input$length_scale_2_fixed_value, input$n_to_draw)
+    rv$ls_2 <- TRUE
+    length_scale_2(draws)
+  })
+  
+  
   # drawing period on button click
   period_2_draw <- eventReactive(input$draw_period_2, {
     draws <- c()
@@ -615,6 +737,14 @@ server <- function(input, output) {
                             beta = input$period_2_beta)
       draws <- append(draws, draw)
     }
+    rv$per_2 <- TRUE
+    period_2(draws)
+  })
+  
+  # fixing period 2 in the constant regime
+  period_2_fixed <- observeEvent(input$period_2_fixed_value, {
+    req(input$is_fix_period_2)
+    draws <- rep(input$period_2_fixed_value, input$n_to_draw)
     rv$per_2 <- TRUE
     period_2(draws)
   })
@@ -631,12 +761,12 @@ server <- function(input, output) {
     magnitude_2(draws)
   })
   
-  seed_setting <- eventReactive(input$set_seed, {
-    set.seed(input$seed_value) # TODO not working
-  })
-  
-  observeEvent(input$set_seed, {
-    set.seed(input$seed_value)
+  # fixing magnitude 2 in the constant regime 
+  magnitude_2_fixed <- observeEvent(input$magnitude_2_fixed_value, {
+    req(input$is_fix_magnitude_2)
+    draws <- rep(input$magnitude_2_fixed_value, input$n_to_draw)
+    rv$mag_2 <- TRUE
+    magnitude_2(draws)
   })
   #-------------------------------------------------------------------------------
   ## GP redraw logic
