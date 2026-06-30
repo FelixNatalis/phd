@@ -113,7 +113,7 @@ ui <- page_fillable(
           card_header("Hyperparameters for magnitude (σ)"),
           layout_columns(
             column(
-              width = 6,
+              width = 8,
               sliderInput("magnitude_df", "Half-t degrees of freedom:", 1, 5, 4),
               sliderInput("magnitude_scale", "Half-t scale:", 1, 15, 1),
               actionButton("draw_magnitude", "Draw magnitude"),
