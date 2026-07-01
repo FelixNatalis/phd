@@ -32,13 +32,6 @@ colors = c( "indianred1", "goldenrod2", "seagreen2", "turquoise2","royalblue1", 
 
 #-------------------------------------------------------------------------------
 ################################################################################
-# LIBRARY
-################################################################################
-#-------------------------------------------------------------------------------
-
-
-#-------------------------------------------------------------------------------
-################################################################################
 # UI
 ################################################################################
 #-------------------------------------------------------------------------------
@@ -80,7 +73,6 @@ ui <- page_fillable(
   navset_tab(
     nav_panel(
       "0. Priors",
-   #   card(
         card(card_header("1. General"),
           layout_columns(
             col_widths = c(6, 6),
@@ -214,8 +206,7 @@ card(card_header("3. Kernel parameters",
           div(
             style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
             uiOutput("hint_convexity")
-          )),
-      #    uiOutput("dynamic_constraint_choice")
+          ))
         )
       ),
       card(
@@ -331,6 +322,7 @@ server <- function(input, output) {
      # || (input$x_3 && input$y_3) 
     )
   }
+  
   condition_constrained_parameters_check <- function() {
     # TODO check that everything is filled
     return(
@@ -343,8 +335,11 @@ server <- function(input, output) {
   observeEvent(input$set_seed, {
     set.seed(input$seed_value)
   })
-  #-------------------------------------------------------------------------------
-  ## Dynamic ui elements
+  
+#-------------------------------------------------------------------------------
+## Dynamic ui elements
+  
+# Hints and text
   
   output$kernel_label_block <- renderUI({
     if (input$is_combination) {
@@ -559,6 +554,9 @@ server <- function(input, output) {
       }
     }
   })
+  
+#-------------------------------------------------------------------------------
+# Enabling and disabling elements
 
   shinyjs::disable("draw_kernel")
   
@@ -672,6 +670,9 @@ server <- function(input, output) {
     }
   })
   
+#-------------------------------------------------------------------------------
+# Parameters for the first kernel
+  
   output$dynamic_length_scale_choice <- renderUI({
     if (!invalid(input$kernel_label) &&
         (input$kernel_label != "Linear")) {
@@ -750,9 +751,9 @@ server <- function(input, output) {
       )
     }
   })
-  #-------------------------------------------------------------------------------
-  
-  # Parameters for the second kernel
+
+#-------------------------------------------------------------------------------
+# Parameters for the second kernel
   
   output$dynamic_magnitude_2_choice <- renderUI({
     if (input$is_combination && !invalid(input$kernel_label_2)) {
@@ -888,8 +889,8 @@ server <- function(input, output) {
     }
   })
   
-  #-------------------------------------------------------------------------------
-  # Constraint parameters
+#-------------------------------------------------------------------------------
+# Constraint parameters
   
   output$dynamic_upper_bound_choice <- renderUI({
     if (input$is_upper_bound) {
@@ -925,8 +926,8 @@ server <- function(input, output) {
     }
   })
   
-  #-------------------------------------------------------------------------------
-  ## Reactive events
+#-------------------------------------------------------------------------------
+## Reactive events
   
   # drawing length scale on button click
   length_scale_draw <- eventReactive(input$draw_length_scale, {
@@ -989,8 +990,9 @@ server <- function(input, output) {
     magnitude(draws)
   })
   
-  #-------------------------------------------------------------------------------
-  # second kernel parameters
+#-------------------------------------------------------------------------------
+# Second kernel parameters
+  
   # drawing length scale on button click
   length_scale_2_draw <- eventReactive(input$draw_length_scale_2, {
     draws <- c()
@@ -1053,8 +1055,10 @@ server <- function(input, output) {
     rv$mag_2 <- TRUE
     magnitude_2(draws)
   })
-  #-------------------------------------------------------------------------------
-  ## GP redraw logic
+  
+#-------------------------------------------------------------------------------
+## GP redraw logic
+  
   gp_pool <- eventReactive(input$draw_gp, {
     if (!constrained_check()) {
       tryCatch({
@@ -1281,8 +1285,8 @@ server <- function(input, output) {
     enable("draw_gp")
   })
   
-  #-------------------------------------------------------------------------------
-  ## plots
+#-------------------------------------------------------------------------------
+## Plots
   
   param_plot <- function(dataframe,
                          title,
@@ -1375,8 +1379,9 @@ server <- function(input, output) {
                "period",
                period())
   })
-  #-------------------------------------------------------------------------------
-  ## plots for second kernel parameters
+  
+#-------------------------------------------------------------------------------
+## Plots for second kernel parameters
   
   # Inverse-Gamma prior for length_scale plot
   output$plot_length_scale_2 <- renderPlot({
@@ -1440,7 +1445,6 @@ server <- function(input, output) {
     )
   })
   
-  # TODO
   # Kernel based on distance plot
   output$plot_kernel <- renderPlot({
     req(input$draw_kernel)
@@ -1527,14 +1531,13 @@ server <- function(input, output) {
     })
   })
   
-  # TODO
   # GP prior draws plot
   output$plot_gp <- renderPlot({
     tryCatch({
       req(input$draw_gp)
       if (1 ||
           condition_parameters_check() &&
-          !constrained_check() #TODO delete1
+          !constrained_check() 
           || condition_constrained_parameters_check()) {
         observe(gp_data())
         kernel_title <- paste(input$kernel_label,

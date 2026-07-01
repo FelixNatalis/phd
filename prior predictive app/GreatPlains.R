@@ -1,5 +1,31 @@
 library(gtools)
 
+#-------------------------------------------------------------------------------
+################################################################################
+# LIBRARY
+################################################################################
+#-------------------------------------------------------------------------------
+# Hash values
+
+kernel_labels <- c("Squared Exponential", "Matérn", "Linear", "Periodic")
+
+kernel_operation_labels <- c("add", "multiply", "changepoint")
+
+kernel_formulae <- hash(kernel_labels, c("\\sigma^2\\exp\\left(\\frac{(x - x')^2}{\\lambda^2}\\right)\\)",
+                                         "\\sigma^2\\frac{2^{1 - \\nu}}{\\Gamma(\\nu)} \\left(\\frac{\\sqrt{2\\nu}|x - x'|}{\\lambda}\\right)^\\nu K_{\\nu}\\left(\\frac{\\sqrt{2\\nu}|x - x'|}{\\lambda}\\right)\\)
+                                         where \\(\\Gamma\\) is the gamma function, \\(K_{\\nu}\\) is a modified Bessel function", 
+                                         "\\sigma^2xx'\\)", 
+                                         "\\sigma^2\\exp\\left(-\\frac{2\\sin^2{\\frac{\\pi|x - x'|}{p}}}{\\lambda^2}\\right) \\)"))
+
+kernel_operation_formulae = hash(kernel_operation_labels, c("\\( k(x, x') = k_1(x, x') + k_2(x, x') \\)", 
+                                                            "\\( k(x, x') = k_1(x, x')k_2(x, x') \\)",
+                                                            "\\( k(x, x') = k_1(x, x')\\psi + k_2(x, x')\\hat\\psi\\)
+\\(\\psi = \\psi(x)\\psi(x')\\)
+\\(\\hat\\psi = (1 - \\psi(x))(1 - \\psi(x'))\\)
+\\(\\psi(x) = \\frac{1}{1 + \\exp\\left(-s(x-x_{0})\\right)}\\)"))
+
+
+#-------------------------------------------------------------------------------
 ## Kernels
 
 # SE kernel function
@@ -31,23 +57,6 @@ periodic_kernel <- function(x1, x2, magnitude, length_scale, period) {
       -2 * sin(pi * abs(a - b) / period)^2 / length_scale^2
     )))
 }
-
-kernel_labels <- c("Squared Exponential", "Matérn", "Linear", "Periodic")
-
-kernel_operation_labels <- c("add", "multiply", "changepoint")
-
-kernel_formulae <- hash(kernel_labels, c("\\sigma^2\\exp\\left(\\frac{(x - x')^2}{\\lambda^2}\\right)\\)",
-                                         "\\sigma^2\\frac{2^{1 - \\nu}}{\\Gamma(\\nu)} \\left(\\frac{\\sqrt{2\\nu}|x - x'|}{\\lambda}\\right)^\\nu K_{\\nu}\\left(\\frac{\\sqrt{2\\nu}|x - x'|}{\\lambda}\\right)\\)
-                                         where \\(\\Gamma\\) is the gamma function, \\(K_{\\nu}\\) is a modified Bessel function", 
-                                         "\\sigma^2xx'\\)", 
-                                         "\\sigma^2\\exp\\left(-\\frac{2\\sin^2{\\frac{\\pi|x - x'|}{p}}}{\\lambda^2}\\right) \\)"))
-
-kernel_operation_formulae = hash(kernel_operation_labels, c("\\( k(x, x') = k_1(x, x') + k_2(x, x') \\)", 
-"\\( k(x, x') = k_1(x, x')k_2(x, x') \\)",
-"\\( k(x, x') = k_1(x, x')\\psi + k_2(x, x')\\hat\\psi\\)
-\\(\\psi = \\psi(x)\\psi(x')\\)
-\\(\\hat\\psi = (1 - \\psi(x))(1 - \\psi(x'))\\)
-\\(\\psi(x) = \\frac{1}{1 + \\exp\\left(-s(x-x_{0})\\right)}\\)"))
 
 psi <- function(x, steepness, location) {
   return(1 / (1 + exp(-steepness * (x - location))))
@@ -175,6 +184,7 @@ simple_kernel_wrapper <- function(kernel_label, x1, x2, params) {
 
 #-------------------------------------------------------------------------------
 # Drawing GP
+
 make_psd <- function(K, jitter = 1e-6) {
   K <- (K + t(K)) / 2          # force exact symmetry
   eig <- eigen(K, symmetric = TRUE)
@@ -203,8 +213,6 @@ simulate_gp <- function(x,
   L <- chol(K)
   m <- mean_fun(x)
   f <- m + t(L) %*% rnorm(length(x))
-  #cat(paste("\neeee\n"))
-  #cat(paste(f))
   
   # noise
   eps <- sigma_noise * rnorm(length(x))
@@ -261,6 +269,7 @@ simulate_constrained_gp <- function(x_train,
   
   return(sim.model$ysim)
 }
+
 #-------------------------------------------------------------------------------
 ## Distributions
 
