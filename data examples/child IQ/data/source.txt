@@ -1,0 +1,1 @@
+https://www.kaggle.com/datasets/jacopoferretti/child-vs-mother-iq?resource=download&select=kid_iq.csv
