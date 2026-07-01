@@ -28,7 +28,7 @@ x_max = 10
 n_points = 200
 epsilon = 1e-6
 n_draws = 6
-colors = c("red", "orange", "yellow", "green", "blue", "purple")
+colors = c( "indianred1", "goldenrod2", "seagreen2", "turquoise2","royalblue1", "mediumorchid1")
 
 #-------------------------------------------------------------------------------
 ################################################################################
@@ -81,12 +81,27 @@ ui <- page_fillable(
     nav_panel(
       "Kernel",
       card(
-        "Parameters",
+        "General",
         card(
+          layout_columns(
+            col_widths = c(6, 6),
+            gap = "0.1rem",
+            column(
+              width = 10,
+          checkboxInput("is_formula", "Display hints and kernel formula?", value = FALSE),
           sliderInput("n_to_draw", "Number of parameter sets to draw:", 1, n_draws, 1),
           numberInput("seed_value", "Choose seed value:", width = 120), 
-          actionButton("set_seed", "Set seed")
-        ),
+          actionButton("set_seed", "Set seed")),
+          column(width = 10,
+          #       div(
+           #        style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+               #    uiOutput("hint_general")
+ #                  tags$pre("A:
+#1.
+#2.")
+            #     ) 
+)
+        )),
        card(
          card_header("Kernel", style = 'padding:4px; font-size:80%'),
          layout_columns(
@@ -100,7 +115,6 @@ ui <- page_fillable(
            ),
            column(
              width = 10,
-             checkboxInput("is_formula", "Display kernel formula?", value = FALSE),
              div(
                style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
                uiOutput("kernel_formula_block")
@@ -112,13 +126,19 @@ ui <- page_fillable(
         card(
           card_header("Hyperparameters for magnitude (σ)"),
           layout_columns(
+            col_widths = c(3, 3, 6),
+            gap = "0.1rem",
             column(
-              width = 8,
+              width = 10,
               sliderInput("magnitude_df", "Half-t degrees of freedom:", 1, 5, 4),
               sliderInput("magnitude_scale", "Half-t scale:", 1, 15, 1),
               actionButton("draw_magnitude", "Draw magnitude"),
               checkboxInput(inputId = "is_fix_magnitude", "Fix magnitude at a constant value?", value = FALSE),
               sliderInput(inputId = "magnitude_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
+            ),
+            div(
+              style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+              uiOutput("hint_magnitude")
             )
             ,
             plotOutput("plot_magnitude", height = "250px")
@@ -138,6 +158,10 @@ ui <- page_fillable(
       "Constraints",
       card(
         card_header("Function characteristics"),
+        div(
+          style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+          uiOutput("hint_constraints")
+        ),
         layout_columns(
           column(
             width = 8,
@@ -146,6 +170,10 @@ ui <- page_fillable(
               "Upper Y-scale bound",
               value = FALSE,
               width = NULL
+            ),
+            div(
+              style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+              uiOutput("hint_upper_bound")
             ),
             uiOutput("dynamic_upper_bound_choice")
           ),
@@ -157,6 +185,10 @@ ui <- page_fillable(
               value = FALSE,
               width = NULL
             ),
+            div(
+              style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+              uiOutput("hint_lower_bound")
+            ),
             uiOutput("dynamic_lower_bound_choice")
           ),
           column(
@@ -167,7 +199,11 @@ ui <- page_fillable(
               value = FALSE,
               width = NULL
             ),
-            uiOutput("dynamic_monotonicity_choice")
+            div(
+              style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+              uiOutput("hint_monotonicity")
+            )#,
+        #    uiOutput("dynamic_monotonicity_choice")
           ),
           column(
             width = 8,
@@ -176,13 +212,21 @@ ui <- page_fillable(
               "Convexity",
               value = FALSE,
               width = NULL
-            )
-          ),
-          uiOutput("dynamic_constraint_choice")
+            ),
+        
+          div(
+            style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+            uiOutput("hint_convexity")
+          )),
+      #    uiOutput("dynamic_constraint_choice")
         )
       ),
       card(
         card_header("Specific function values"),
+        div(
+          style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+          uiOutput("hint_values")
+        ),
         layout_columns(column(width = 2,numberInput("x_1", "x₁")),column(width = 2, numberInput("y_1", "y₁"))),
         layout_columns(column(width = 2,numberInput("x_2", "x₂")), column(width = 2,numberInput("y_2", "y₂"))),
         layout_columns(column(width = 2,numberInput("x_3", "x₃")),column(width = 2, numberInput("y_3", "y₃")))
@@ -283,7 +327,11 @@ server <- function(input, output) {
     return(
       input$is_upper_bound ||
         input$is_lower_bound ||
-        input$is_monotonicity || input$is_convexity
+        input$is_monotonicity || 
+        input$is_convexity
+   #   || (input$x_1 && input$y_1) 
+    #  || (input$x_2 && input$y_2) 
+     # || (input$x_3 && input$y_3) 
     )
   }
   condition_constrained_parameters_check <- function() {
@@ -318,6 +366,183 @@ server <- function(input, output) {
       )
     } else{
       selectInput("kernel_label", "Choose a kernel:", choices = kernel_labels)
+    }
+  })
+  
+  output$hint_general <- renderUI({
+    if (input$is_formula) {
+      general <- "This app helps you explore the prior distribution formulation for Gaussian processes. Follow these steps:
+      1. Set the general parameters in this block
+      2. Choose the kernel structure" 
+      step_1<-""
+      step_2<-""
+      step_3<-"3. Fill in the hyperparameters for the chosen kernel"
+      step_4<-"4. Examine the kernel by pressing the \"draw kernel\" button"
+      step_5<-"5. Navigate to the \"Constraints\" page and set constraints (optional)"
+      step_6<-"6. Navigate to the \"GP\" page, adjust GP drawing settings and draw GPs by pressing the \"draw GP\" button"
+      
+     # div(
+     #   HTML(paste("A:", "1.", "2.", sep = "<br/>"))
+     # )
+      withMathJax(
+        p(general)#,
+   #     p(step_1),
+    #    p(step_2),
+     #   p(step_3),
+      #  p(step_4),
+       # p(step_5),
+        #p(step_6)
+      )
+      }
+  })
+  
+  output$hint_magnitude <- renderUI({
+    if (input$is_formula) {
+        hint <- "Magnitude refers to the amplitude in the \\(y\\) values. The prior is set on the \\(standard\\) \\(deviation\\), which is squared in most kernels, making prior values close to \\(0\\) shift towards \\(0\\) even more."
+        
+        withMathJax(
+          p(hint)
+        )
+    }
+  })
+  
+  output$hint_length_scale <- renderUI({
+    if (input$is_formula) {
+      hint <- "Length scale refers to the scale of the \\(x\\) values after which the function fluctuates. Shorter length scales correspond to more wiggly functions, and longer - to flatter functions. The length scale is always relative to the scale of \\(x\\)."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_period <- renderUI({
+    if (input$is_formula) {
+      hint <- "Period determines the scale of the \\(x\\) values after which the periodic function repeats its pattern. Shorter periods correspond to more frequent oscillations, and longer - to slower oscillations. The period is always relative to the scale of \\(x\\)."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_roughness <- renderUI({
+    if (input$is_formula) {
+      hint <- "Roughness of the Matérn kernel represents how smooth the function is. Higher values correspond to higher differentiability and smoothness, and lower produce more jagged functions. As \\(\\nu\\) approaches infinity, Matérn kernel converges to the Squared Exponential kernel."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_roughness_2 <- renderUI({
+    if (input$is_formula) {
+      hint <- "Roughness of the Matérn kernel represents how smooth the function is. Higher values correspond to higher differentiability and smoothness, and lower produce more jagged functions. As \\(\\nu\\) approaches infinity, Matérn kernel converges to the Squared Exponential kernel."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_period_2 <- renderUI({
+    if (input$is_formula) {
+      hint <- "Period determines the scale of the \\(x\\) values after which the periodic function repeats its pattern. Shorter periods correspond to more frequent oscillations, and longer - to slower oscillations. The period is always relative to the scale of \\(x\\)."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_length_scale_2 <- renderUI({
+    if (input$is_formula) {
+      hint <- "Length scale refers to the scale of the \\(x\\) values after which the function fluctuates. Shorter length scales correspond to more wiggly functions, and longer - to flatter functions. The length scale is always relative to the scale of \\(x\\)."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_magnitude_2 <- renderUI({
+    if (input$is_formula) {
+      hint <- "Magnitude refers to the amplitude in the \\(y\\) values. The prior is set on the \\(standard\\) \\(deviation\\), which is squared in most kernels, making prior values close to \\(0\\) shift towards \\(0\\) even more."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_changepoint <- renderUI({
+    if (input$is_formula) {
+      hint <- "Parameters of the changepoint kernel govern how the two base kernels replace each other. Location of the changepoint determines the \\(x\\) value where the change in base kernels takes place. Steepness regulates how rapidly the fade-out of the first kernel and the fade-in of the second kernel happen."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_lower_bound <- renderUI({
+    if (input$is_formula) {
+      hint <- "Lower bound constraint sets the minimum value that the \\(y\\) is allowed to take."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_upper_bound <- renderUI({
+    if (input$is_formula) {
+      hint <- "Upper bound constraint sets the maximum value that the \\(y\\) is allowed to take."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_monotonicity <- renderUI({
+    if (input$is_formula) {
+      hint <- "Non-decreasing monotonicity constraint forces the function to only increase its values or keep them at the same level. This also means that the \\(first\\) \\(derivative\\) of the function is \\(equal\\) \\(to\\) \\(or\\) \\(greater\\) \\(than\\) \\(0\\)"
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_convexity <- renderUI({
+    if (input$is_formula) {
+      hint <- "Convexity forces the \\(second\\) \\(derivative\\) of the function to be \\(equal\\) \\(to\\) \\(or\\) \\(greater\\) \\(than\\) \\(0\\)."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_constraints <- renderUI({
+    if (input$is_formula) {
+      hint <- "Constraints allow to fix the function specifically in qualitative ways informed by the domain knowledge. Due to the limitations of the package used for this, setting constraints is only possible for the \\(Squared\\) \\(exponential\\) \\(kernel\\), it only allows the \\(x\\) range of \\([0;1]\\), and only makes one GP draw."
+      
+      withMathJax(
+        p(hint)
+      )
+    }
+  })
+  
+  output$hint_values <- renderUI({
+    if (input$is_formula) {
+      hint <- "It is possible to set several specific points as \\((x, y)\\) pairs."
+      
+      withMathJax(
+        p(hint)
+      )
     }
   })
   
@@ -449,19 +674,31 @@ server <- function(input, output) {
     }
   })
   
+  observe({
+    if (constrained_check()) {
+      shinyjs::disable("x_range")
+    }
+  })
+  
   output$dynamic_length_scale_choice <- renderUI({
     if (!invalid(input$kernel_label) &&
         (input$kernel_label != "Linear")) {
       card(
         card_header("Hyperparameters for length scale (λ)"),
         layout_columns(
+          col_widths = c(3, 3, 6),
+          gap = "0.1rem",
           column(
-            width = 8,
+            width = 10,
             sliderInput("length_scale_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("length_scale_beta", "Inverse-Gamma beta:", 1, 15, 1),
             actionButton("draw_length_scale", "Draw length scale"),
             checkboxInput(inputId = "is_fix_length_scale", "Fix length scale at a constant value?", value = FALSE),
             sliderInput(inputId = "length_scale_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
+          ),
+          div(
+            style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+            uiOutput("hint_length_scale")
           ),
           plotOutput("plot_length_scale", height = "250px")
         )
@@ -475,13 +712,19 @@ server <- function(input, output) {
       card(
         card_header("Hyperparameters for period (p)"),
         layout_columns(
+          col_widths = c(3, 3, 6),
+          gap = "0.1rem",
           column(
-            width = 8,
+            width = 10,
             sliderInput("period_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("period_beta", "Inverse-Gamma beta:", 1, 15, 1),
             actionButton("draw_period", "Draw period"),
             checkboxInput(inputId = "is_fix_period", "Fix period at a constant value?", value = FALSE),
             sliderInput(inputId = "period_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
+          ),
+          div(
+            style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+            uiOutput("hint_period")
           ),
           plotOutput("plot_period", height = "250px")
         )
@@ -494,12 +737,23 @@ server <- function(input, output) {
         (input$kernel_label == "Matérn")) {
       card(
         card_header("Hyperparameters for roughness (ν)"),
+        layout_columns(
+          col_widths = c(3, 3),
+          gap = "0.1rem",
+          column(
+            width = 10,
         sliderTextInput(
           "nu",
           "Value of roughness:",
           choices = c(0.5, 1.5, 2.5, 3.5),
           grid = TRUE,
           selected = 1.5
+        )
+          ),
+        div(
+          style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+          uiOutput("hint_roughness")
+        )
         )
       )
     }
@@ -513,13 +767,19 @@ server <- function(input, output) {
       card(
         card_header("Hyperparameters for magnitude (σ) of the second kernel"),
         layout_columns(
+          col_widths = c(3, 3, 6),
+          gap = "0.1rem",
           column(
-            width = 8,
+            width = 10,
             sliderInput("magnitude_2_df", "Half-t degrees of freedom:", 1, 5, 4),
             sliderInput("magnitude_2_scale", "Half-t scale:", 1, 15, 1),
             actionButton("draw_magnitude_2", "Draw magnitude"),
             checkboxInput(inputId = "is_fix_magnitude_2", "Fix magnitude at a constant value?", value = FALSE),
             sliderInput(inputId = "magnitude_2_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
+          ),
+          div(
+            style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+            uiOutput("hint_magnitude_2")
           )
           ,
           plotOutput("plot_magnitude_2", height = "250px")
@@ -534,13 +794,19 @@ server <- function(input, output) {
       card(
         card_header("Hyperparameters for length scale (λ) of the second kernel"),
         layout_columns(
+          col_widths = c(3, 3, 6),
+          gap = "0.1rem",
           column(
-            width = 8,
+            width = 10,
             sliderInput("length_scale_2_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("length_scale_2_beta", "Inverse-Gamma beta:", 1, 15, 1),
             actionButton("draw_length_scale_2", "Draw length scale"),
             checkboxInput(inputId = "is_fix_length_scale_2", "Fix length scale at a constant value?", value = FALSE),
             sliderInput(inputId = "length_scale_2_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
+          ),
+          div(
+            style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+            uiOutput("hint_length_scale_2")
           ),
           plotOutput("plot_length_scale_2", height = "250px")
         )
@@ -554,13 +820,19 @@ server <- function(input, output) {
       card(
         card_header("Hyperparameters for period (p) of the second kernel"),
         layout_columns(
+          col_widths = c(3, 3, 6),
+          gap = "0.1rem",
           column(
-            width = 8,
+            width = 10,
             sliderInput("period_2_alpha", "Inverse-Gamma alpha:", 1, 15, 1),
             sliderInput("period_2_beta", "Inverse-Gamma beta:", 1, 15, 1),
             actionButton("draw_period_2", "Draw period"),
             checkboxInput(inputId = "is_fix_period_2", "Fix period at a constant value?", value = FALSE),
             sliderInput(inputId = "period_2_fixed_value", label = NULL, value = 0, min = 0, max = 5, step = 0.1)
+          ),
+          div(
+            style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+            uiOutput("hint_period_2")
           ),
           plotOutput("plot_period_2", height = "250px")
         )
@@ -573,12 +845,23 @@ server <- function(input, output) {
         (input$kernel_label_2 == "Matérn")) {
       card(
         card_header("Hyperparameters for roughness (ν) of the second kernel"),
+        layout_columns(
+          col_widths = c(3, 3),
+          gap = "0.1rem",
+          column(
+            width = 10,
         sliderTextInput(
           "nu_2",
           "Value of roughness:",
           choices = c(0.5, 1.5, 2.5, 3.5),
           grid = TRUE,
           selected = 1.5
+        )
+        ),
+        div(
+          style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+          uiOutput("hint_roughness_2")
+        )
         )
       )
     }
@@ -590,6 +873,11 @@ server <- function(input, output) {
         input$operation == "changepoint") {
       card(
         card_header("Changepoint kernel parameters"),
+        layout_columns(
+          col_widths = c(3, 3),
+          gap = "0.1rem",
+          column(
+            width = 10,
         sliderInput(
           "location",
           "Location of changepoint (x₀):",
@@ -598,6 +886,12 @@ server <- function(input, output) {
           value = 0
         ),
         sliderInput("steepness", "Steepness of changepoint (s):", 0.1, 10, 0.1)
+      ),
+      div(
+        style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+        uiOutput("hint_changepoint")
+      )
+      )
       )
     }
   })
