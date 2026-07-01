@@ -1,0 +1,1408 @@
+```{r}
+library(lgpr)
+library(stringr)
+library(reshape2)
+library(tidyr)
+library(beepr)      
+library(tidyverse)
+library(tictoc)
+mytoc <- \() {
+  toc(func.toc = \(tic, toc, msg) {
+    sprintf("%s took %s sec", msg, as.character(signif(toc - tic, 2)))
+  })}
+library(posterior)
+options(pillar.neg = FALSE,
+        pillar.subtle = FALSE,
+        pillar.sigfig = 2)
+library(tinytable)
+options(tinytable_format_num_fmt = "significant_cell",
+        tinytable_format_digits = 2,
+        tinytable_tt_digits = 2)
+library(loo)
+library(bayesplot)
+theme_set(bayesplot::theme_default(base_family = "sans"))
+library(ggdist)
+library(patchwork)
+library(ggrepel)
+library(RColorBrewer)
+set1 <- brewer.pal(7, "Set1")
+Sys.setlocale("LC_TIME", "en_GB.utf8")
+
+library(dplyr)
+library(ggplot2)
+
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+set.seed(123)
+```
+
+
+```{r}
+load(file = "./data/wido.RData")
+# Plot the average smoothed change in original values on original scale (1 to 7)
+p1<-ggplot() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  labs(x = "Months from Widowhood", y = "Life Satisfaction Original") +
+  scale_y_continuous(breaks = seq(1, 7, by = 1), limits = c(1, 7)) +
+  scale_x_continuous(breaks = seq(-180, 180, by = 30), limits = c(-180, 180)) +
+  theme(legend.position = "none") +
+  theme(aspect.ratio=0.9) +
+geom_smooth(data = wido, aes(x=mnths, y=lifesatisfaction)) +
+  ggtitle("Average Life Satisfaction Change On Original Scale") +
+  theme(plot.title = element_text(size = 13, face = "bold")) 
+
+p2<-ggplot() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  labs(x = "Months from Widowhood", y = "Life Satisfaction Original") +
+  scale_y_continuous(breaks = seq(1, 7, by = 1), limits = c(1, 7)) +
+  scale_x_continuous(breaks = seq(-180, 180, by = 30), limits = c(-180, 180)) +
+  theme(legend.position = "none") +
+  theme(aspect.ratio=0.9) +
+geom_line(data = wido, aes(x=mnths, y=lifesatisfaction, group = id, color = factor(id)), alpha= 0.2) +
+  ggtitle("Average Life Satisfaction Change On Original Scale") +
+  theme(plot.title = element_text(size = 13, face = "bold")) +
+  geom_line(data = wido, aes(x = mnths, y = m_lifesat_per_mnth), color = "red")
+
+p1
+p2
+
+ggsave("trajectories.png", p2, width = 10, height = 6,dpi = 180)
+ggsave("smooth.png", p1, width = 10, height = 6,dpi = 180)
+```
+
+```{r}
+counts <- wido %>%
+  group_by(id) %>%
+  summarise(
+        n   = n(),
+        sd = sd(lifesatisfaction),
+        min = min(mnths),
+        max = max(mnths),
+    .groups   = "drop"
+  )
+
+idx_1 <- counts  %>%
+  filter(n >= 15)# %>% filter(min < -50) %>% filter(max > 50) #%>% 
+  #arrange(desc(sd)) )[1:20,]
+
+  idx <- sample(idx_1$id, 20, replace=FALSE)
+  
+data_shorter <-wido %>%
+  filter(id %in% idx) %>% filter(id != 851968)
+nrow(data_shorter)
+
+mnth <- data_shorter %>%
+  group_by(mnths) %>%
+  summarise(
+    sat_mean = mean(lifesatisfaction),
+        n_beeps   = n(),
+    .groups   = "drop"
+  )
+
+
+p2<-ggplot() +
+  labs(x = "Months from Widowhood", y = "Life Satisfaction Original") +
+  geom_line(data = data_shorter, aes(x=mnths, y=lifesatisfaction, group = id, color = factor(id)), alpha= 0.2) +
+  ggtitle("Average Life Satisfaction Change On Original Scale") +
+  theme(plot.title = element_text(size = 13, face = "bold")) + 
+  geom_point(data = data_shorter, aes(x=mnths, y=lifesatisfaction, group = id, color = factor(id)), alpha= 0.2)+
+  #geom_line(data = mnth, aes(x = mnths, y = sat_mean), color = "red")+
+  geom_smooth(data = data_shorter, aes(x = mnths, y=lifesatisfaction))
+
+p2
+
+save(data_shorter, file = "data_shorter.RData")
+load(file = "./data/data_shorter.RData")
+```
+
+
+
+```{r}
+num_draws <- 300
+mu_wrp <- -0.7
+sigma_wrp <- 0.3
+r <- range(wido$mnths, na.rm = TRUE)
+
+# Define prior for lgp()
+my_prior <- list(wrp = log_normal(mu_wrp, sigma_wrp))
+
+# Prior draws
+wrp_draws <- stats::rlnorm(num_draws, mu_wrp, sigma_wrp)
+
+# Plot corresponding input warping functions
+# - this function is not exported from lgpr so we need to use triple colons :::
+# - alpha here is line opacity, not a GP parameter
+lgpr:::plot_inputwarp(wrp_draws, seq(r[1], r[2], by = 1), alpha = 0.1)
+
+```
+
+```{r}
+# Fit model
+gp_0 <- lgp(lifesatisfaction ~ gp_ns(mnths) + zs(id), data = data_shorter, sample_f = TRUE)
+
+print(gp_0)
+save(gp_0, file="gp_0.RData")
+```
+
+```{r}
+# Create function to wrangle the predictions to the correct format
+process_predictions <- function(predicted) {
+  # Extract and reshape predictions 
+  x <- as.data.frame(predicted@x)
+  y <- as.data.frame(predicted@h) %>%
+    pivot_longer(cols = everything()) %>%
+    dplyr::select(-name) %>%
+    rename(y = value)
+
+  # Combine 
+  data <- cbind(x, y)
+  
+  return(data)
+}
+
+set.seed(123)
+
+# Filter the data to include only the randomly selected participants
+gp_pred_r_rsample <- data_shorter
+
+# Define time sequence
+t <- seq(-178, 179, by = 1)
+
+# Generate prediction dataset
+x_pred <- new_x(data_shorter, t, group_by = NA, x = "mnths")
+
+# Apply function for predictions for shared effect (f = fixed effect) and person-specific effect (r = random effects)
+p_1<-pred(gp_0, x_pred, reduce = mean, verbose = FALSE)
+gp_pred_f <- process_predictions(p_1)
+gp_pred_r <- process_predictions(pred(gp_0, reduce = mean, verbose = FALSE))
+
+
+draws_summary <- function(mat, grid) {
+  df <- tibble(
+    mnths = grid,
+    mean   = colMeans(mat),
+    lo     = apply(mat, 2, quantile, 0.025),
+    hi     = apply(mat, 2, quantile, 0.975)
+  )
+  
+  df
+}
+
+
+n_draws <- nrow(get_draws(gp_0))
+idx     <- sample(n_draws, min(200, n_draws))
+
+pred_ci    <- pred(gp_0, x_pred, draws = idx, verbose = FALSE)
+df_ci    <- draws_summary(pred_ci@h, t)
+
+
+p_0 <- ggplot() +
+  geom_ribbon(data = df_ci,
+              aes(x = mnths, ymin = lo, ymax = hi),
+              alpha = 0.18) +
+  
+  geom_line(
+    data = gp_pred_r_rsample,
+    aes(mnths, y = lifesatisfaction, group = id),
+    color = "grey70",
+    linewidth = 0.4
+  ) +
+  geom_line(
+    data = gp_pred_f,
+    aes(x = mnths, y = y),
+    color = "firebrick4",
+    linewidth = 1
+  ) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+p_0
+
+ggsave("gp_0.png",
+       p_0,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+
+
+```{r}
+comp_0<-plot_components(gp_0,
+  group_by = NA,
+  t_name  = "mnths",
+  ncol = 2
+)
+```
+
+
+```{r}
+prior <- list(
+  alpha = log_normal(0, 1), 
+  ell = log_normal(0, 1),
+  wrp = log_normal(-0.7, 0.9)
+)
+
+# For reproducibility
+set.seed(123)
+
+# Fit model
+gp_1 <- lgp(lifesatisfaction ~ gp_ns(mnths) + gp_ns(mnths) * zs(id), data = data_shorter, prior = prior, sample_f = TRUE)
+
+print(gp_1)
+save(gp_1, file="gp_1.RData")
+
+load(file="gp_1.RData")
+plot_components(gp_1,
+  group_by = NA,
+  t_name  = "mnths",
+  ncol = 2
+)
+```
+
+```{r}
+p_1<-pred(gp_1, x_pred, reduce = mean, verbose = FALSE)
+gp_pred_f <- process_predictions(p_1)
+gp_pred_r <- process_predictions(pred(gp_1, reduce = mean, verbose = FALSE))
+
+n_draws <- nrow(get_draws(gp_1))
+idx     <- sample(n_draws, min(200, n_draws))
+
+pred_ci    <- pred(gp_1, x_pred, draws = idx, verbose = FALSE)
+df_ci    <- draws_summary(pred_ci@h, t)
+
+
+pl_1 <- ggplot() +
+  geom_ribbon(data = df_ci,
+              aes(x = mnths, ymin = lo, ymax = hi),
+              alpha = 0.18) +
+  
+  geom_line(
+    data = gp_pred_r_rsample,
+    aes(mnths, y = lifesatisfaction, group = id),
+    color = "grey70",
+    linewidth = 0.4
+  ) +
+  geom_line(
+    data = gp_pred_f,
+    aes(x = mnths, y = y),
+    color = "firebrick4",
+    linewidth = 1
+  ) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+pl_1
+
+ggsave("gp_1.png",
+       pl_1,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+
+
+```{r}
+gp_2 <- lgp(lifesatisfaction ~ gp_ns(mnths) + zs(id), data = data_shorter, prior = prior, sample_f = TRUE)
+print(gp_2)
+save(gp_2, file="gp_2.RData")
+
+
+load(file="gp_2.RData")
+plot_components(gp_2,
+  group_by = NA,
+  t_name  = "mnths",
+  ncol = 2
+)
+```
+```{r}
+p_2<-pred(gp_2, x_pred, reduce = mean, verbose = FALSE)
+gp_pred_f <- process_predictions(p_2)
+gp_pred_r <- process_predictions(pred(gp_2, reduce = mean, verbose = FALSE))
+
+n_draws <- nrow(get_draws(gp_2))
+idx     <- sample(n_draws, min(200, n_draws))
+
+pred_ci    <- pred(gp_2, x_pred, draws = idx, verbose = FALSE)
+df_ci    <- draws_summary(pred_ci@h, t)
+
+
+pl_2 <- ggplot() +
+  geom_ribbon(data = df_ci,
+              aes(x = mnths, ymin = lo, ymax = hi),
+              alpha = 0.18) +
+  
+  geom_line(
+    data = gp_pred_r_rsample,
+    aes(mnths, y = lifesatisfaction, group = id),
+    color = "grey70",
+    linewidth = 0.4
+  ) +
+  geom_line(
+    data = gp_pred_f,
+    aes(x = mnths, y = y),
+    color = "firebrick4",
+    linewidth = 1
+  ) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+pl_2
+
+ggsave("gp_2.png",
+       pl_2,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+
+
+# -------------------------------------------------------------------LESS DATA
+
+```{r}
+set.seed(124)
+idx <- sample(unique(data_shorter$id), 10, replace=FALSE)
+  
+data_even_shorter <-data_shorter %>%
+  filter(id %in% idx) 
+nrow(data_even_shorter)
+
+mnth <- data_even_shorter %>%
+  group_by(mnths) %>%
+  summarise(
+    sat_mean = mean(lifesatisfaction),
+        n_beeps   = n(),
+    .groups   = "drop"
+  )
+
+
+p2<-ggplot() +
+  labs(x = "Months from Widowhood", y = "Life Satisfaction Original") +
+  geom_line(data = data_even_shorter, aes(x=mnths, y=lifesatisfaction, group = id, color = factor(id)), alpha= 0.2) +
+  ggtitle("Average Life Satisfaction Change On Original Scale") +
+  theme(plot.title = element_text(size = 13, face = "bold")) + 
+  geom_point(data = data_even_shorter, aes(x=mnths, y=lifesatisfaction, group = id, color = factor(id)), alpha= 0.2)+
+  #geom_line(data = mnth, aes(x = mnths, y = sat_mean), color = "red")+
+  geom_smooth(data = data_even_shorter, aes(x = mnths, y=lifesatisfaction))
+
+p2
+
+save(data_even_shorter, file = "data_even_shorter.RData")
+load(file = "./data/data_even_shorter.RData")
+
+ggsave("data_even_shorter.png",
+       p2,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+
+# less data + good model + informative prior
+```{r}
+
+prior <- list(
+  alpha = student_t(1, square = TRUE), #log_normal(0, 1), 
+  ell = igam(1, 4), #log_normal(0, 1),
+  wrp = log_normal(-0.5, 1) 
+)
+
+
+gp_3 <- lgp(lifesatisfaction ~ gp_ns(mnths) + zs(id), data = data_even_shorter, prior = prior ,sample_f = TRUE)
+print(gp_3)
+save(gp_3, file="gp_3.RData")
+
+
+#load(file="gp_3.RData")
+plot_components(gp_3,
+  group_by = NA,
+  t_name  = "mnths",
+  ncol = 2
+)
+
+p_3<-pred(gp_3, x_pred, reduce = mean, verbose = FALSE)
+gp_pred_f <- process_predictions(p_3)
+gp_pred_r <- process_predictions(pred(gp_3, reduce = mean, verbose = FALSE))
+
+n_draws <- nrow(get_draws(gp_3))
+idx     <- sample(n_draws, min(200, n_draws))
+
+pred_ci    <- pred(gp_3, x_pred, draws = idx, verbose = FALSE)
+df_ci    <- draws_summary(pred_ci@h, t)
+
+
+pl_3 <- ggplot() +
+  geom_ribbon(data = df_ci,
+              aes(x = mnths, ymin = lo, ymax = hi),
+              alpha = 0.18) +
+  
+  geom_line(
+    data = data_even_shorter,
+    aes(mnths, y = lifesatisfaction, group = id),
+    color = "grey70",
+    linewidth = 0.4
+  ) +
+  geom_line(
+    data = gp_pred_f,
+    aes(x = mnths, y = y),
+    color = "firebrick4",
+    linewidth = 1
+  ) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+pl_3
+
+ggsave("gp_3.png",
+       pl_3,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+# less data + good model but with default priors
+```{r}
+
+gp_4 <- lgp(lifesatisfaction ~ gp_ns(mnths) + zs(id), data = data_even_shorter ,sample_f = TRUE)
+print(gp_4)
+save(gp_4, file="gp_4.RData")
+
+
+#load(file="gp_4.RData")
+plot_components(gp_4,
+  group_by = NA,
+  t_name  = "mnths",
+  ncol = 2
+)
+
+p_4<-pred(gp_4, x_pred, reduce = mean, verbose = FALSE)
+gp_pred_f <- process_predictions(p_4)
+gp_pred_r <- process_predictions(pred(gp_4, reduce = mean, verbose = FALSE))
+
+n_draws <- nrow(get_draws(gp_4))
+idx     <- sample(n_draws, min(200, n_draws))
+
+pred_ci    <- pred(gp_4, x_pred, draws = idx, verbose = FALSE)
+df_ci    <- draws_summary(pred_ci@h, t)
+
+
+pl_4 <- ggplot() +
+  geom_ribbon(data = df_ci,
+              aes(x = mnths, ymin = lo, ymax = hi),
+              alpha = 0.18) +
+  
+  geom_line(
+    data = data_even_shorter,
+    aes(mnths, y = lifesatisfaction, group = id),
+    color = "grey70",
+    linewidth = 0.4
+  ) +
+  geom_line(
+    data = gp_pred_f,
+    aes(x = mnths, y = y),
+    color = "firebrick4",
+    linewidth = 1
+  ) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+pl_4
+
+ggsave("gp_4.png",
+       pl_4,
+       width = 10,
+       height = 6,
+       dpi = 180)
+```
+
+### STAN changepoint kernel
+
+```{r}
+library(dplyr)
+library(rstan)
+library(ggplot2)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+data_even_shorter <- data_even_shorter %>%
+  select(id, lifesatisfaction, mnths) %>%
+  filter(!is.na(lifesatisfaction), !is.na(mnths)) %>%
+  arrange(id, mnths) %>%
+  mutate(id_int = as.integer(factor(id)))
+
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  # sigmoid, tuneable sd#abs(data_even_shorter$mnths)   # distance from event; 0 at occurrence
+)
+
+fit <- stan(
+  file = "C:/Users/margo/stan/hierarchical.stan",# gp_changepoint
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit,
+  pars = c("length_scale_k1","variance_k1", #"length_scale_k_2","variance_k_2","length_scale_k_3","variance_k_3",
+           "sigma")#, "steepness")
+)
+
+save(
+  fit,
+  file = "fit_1.RData"
+)
+
+#load("fit_1.RData")
+
+
+post_fit <- rstan::extract(fit)
+fit_n <- apply(post_fit$fit, 2, mean) 
+
+library(tidyverse)
+
+fit_summary <- summary(fit)$summary
+
+# Extract effects
+n <- nrow(data_even_shorter)
+
+eff1     <- fit_summary[paste0("eff_1[", 1:n, "]"), "mean"]
+eff2     <- fit_summary[paste0("eff_2[", 1:n, "]"), "mean"]
+intercept <- fit_summary["intercept", "mean"]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared     = intercept + eff1,
+    individual = intercept + eff1 + eff2
+  )
+
+ggplot(plot_df, aes(x = mnths)) +
+  geom_point(aes(y = lifesatisfaction, color = factor(id)), alpha = 0.4, size = 1.5) +
+  geom_line(aes(y = individual, color = factor(id), group = id), linewidth = 0.6, alpha = 0.8) +
+  geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey40") +
+  labs(
+    x = "Months relative to event", 
+    y = "Life satisfaction",
+    color = "Participant",
+    title = "Shared GP trend (dashed) and individual trajectories"
+  ) +
+  theme_minimal()
+```
+
+# changepoint
+```{r}
+library(dplyr)
+library(rstan)
+library(ggplot2)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+data_even_shorter <- data_even_shorter %>%
+  select(id, lifesatisfaction, mnths) %>%
+  filter(!is.na(lifesatisfaction), !is.na(mnths)) %>%
+  arrange(id, mnths) %>%
+  mutate(id_int = as.integer(factor(id)))
+
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  # sigmoid, tuneable sd#abs(data_even_shorter$mnths)   # distance from event; 0 at occurrence
+)
+
+fit <- stan(
+  file = "C:/Users/margo/stan/hierarchical_changepoint.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit,
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3",        "sigma")
+)
+
+save(
+  fit,
+  file = "fit_2.RData"
+)
+
+#load("fit_2.RData")
+
+
+post_fit <- rstan::extract(fit)
+fit_n <- apply(post_fit$fit, 2, mean) 
+
+library(tidyverse)
+
+fit_summary <- summary(fit)$summary
+
+# Extract effects
+n <- nrow(data_even_shorter)
+
+eff1     <- fit_summary[paste0("eff_1[", 1:n, "]"), "mean"]
+eff2     <- fit_summary[paste0("eff_2[", 1:n, "]"), "mean"]
+intercept <- fit_summary["intercept", "mean"]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared     = intercept + eff1,
+    individual = intercept + eff1 + eff2
+  )
+
+ggplot(plot_df, aes(x = mnths)) +
+  geom_point(aes(y = lifesatisfaction, color = factor(id)), alpha = 0.4, size = 1.5) +
+  geom_line(aes(y = individual, color = factor(id), group = id), linewidth = 0.6, alpha = 0.8) +
+  geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey40") +
+  labs(
+    x = "Months relative to event", 
+    y = "Life satisfaction",
+    color = "Participant",
+    title = "Shared GP trend (dashed) and individual trajectories"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+library(dplyr)
+library(rstan)
+library(ggplot2)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+data_even_shorter <- data_even_shorter %>%
+  select(id, lifesatisfaction, mnths) %>%
+  filter(!is.na(lifesatisfaction), !is.na(mnths)) %>%
+  arrange(id, mnths) %>%
+  mutate(id_int = as.integer(factor(id)))
+
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  
+)
+
+fit_3 <- stan(
+  file = "C:/Users/margo/stan/hierarchical_changepoint_intercepts.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit_3,
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",     "sigma", "length_scale_k2_s1","variance_k2_s1", "length_scale_k2_s2","variance_k2_s2",    "length_scale_k2_s3","variance_k2_s3")
+)
+
+save(
+  fit_3,
+  file = "fit_3.RData"
+)
+
+load("./fits/fit_3.RData")
+
+
+post_fit_3 <- rstan::extract(fit_3)
+fit_n <- apply(post_fit_3$fit, 2, mean) 
+
+library(tidyverse)
+
+fit_summary <- summary(fit_3)$summary
+
+# Extract effects
+n <- nrow(data_even_shorter)
+
+eff1     <- fit_summary[paste0("eff_1[", 1:n, "]"), "mean"]
+eff2     <- fit_summary[paste0("eff_2[", 1:n, "]"), "mean"]
+intercept_s1 <- fit_summary["intercept_s1", "mean"]
+intercept_s2 <- fit_summary["intercept_s2", "mean"]
+intercept_s3 <- fit_summary["intercept_s3", "mean"]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared     = intercept + eff1,
+    individual = intercept + eff1 + eff2
+  )
+
+ggplot(plot_df, aes(x = mnths)) +
+  geom_point(aes(y = lifesatisfaction, color = factor(id)), alpha = 0.4, size = 1.5) +
+  geom_line(aes(y = individual, color = factor(id), group = id), linewidth = 0.6, alpha = 0.8) +
+  geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "grey40") +
+  geom_hline(yintercept = intercept_s1, color = "blue")+
+  geom_hline(yintercept = intercept_s2, color = "green")+
+  geom_hline(yintercept = intercept_s3, color = "yellow")+
+  labs(
+    x = "Months relative to event", 
+    y = "Life satisfaction",
+    color = "Participant",
+    title = "Shared GP trend (dashed) and individual trajectories"
+  ) +
+  theme_minimal()
+```
+```{r}
+library(tidyverse)
+
+fit_summary <- summary(fit_3)$summary
+n <- nrow(data_even_shorter)
+
+extract_stat <- function(param, stat) fit_summary[paste0(param, "[", 1:n, "]"), stat]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared      = extract_stat("fit", "mean"), #extract_stat("eff_1", "mean") + fit_summary["intercept_s2", "mean"],
+    shared_lo   = extract_stat("fit", "2.5%"), # + fit_summary["intercept_s2", "mean"],
+    shared_hi   = extract_stat("fit", "97.5%"),# + fit_summary["intercept_s2", "mean"],
+    individual  = extract_stat("fit",   "mean"),
+    ind_lo      = extract_stat("fit",   "2.5%"),
+    ind_hi      = extract_stat("fit",   "97.5%")
+  )
+
+ggplot(plot_df, aes(x = mnths)) +
+  # Individual CI ribbons
+  #geom_ribbon(aes(ymin = ind_lo, ymax = ind_hi, fill = factor(id)),
+  #            alpha = 0.15) +
+  # Shared CI ribbon
+ # geom_ribbon(aes(ymin = shared_lo, ymax = shared_hi),
+ #             fill = "grey30", alpha = 0.25) +
+  # Raw data
+  geom_point(aes(y = lifesatisfaction, color = factor(id)),
+             alpha = 0.4, size = 1.5) +
+  # Individual fitted lines
+  geom_line(aes(y = individual, color = factor(id), group = id),
+            linewidth = 0.6, alpha = 0.8) +
+  # Shared GP line
+ # geom_line(aes(y = shared),
+ #           color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = c(-12, 12),
+             linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0,
+             linetype = "solid", color = "grey40", alpha = 0.5) +
+  labs(
+    x = "Months relative to event",
+    y = "Life satisfaction",
+    color = "Participant", fill = "Participant",
+    title = "Shared trend (dashed) with 95% CI and individual trajectories"
+  ) +
+  theme_minimal()
+```
+
+
+# priors
+```{r}
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  
+)
+
+fit_4 <- stan(
+  file = "C:/Users/margo/stan/hierarchical_changepoint_intercepts_priors_1.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit_4,
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",    "sigma", "length_scale_k2_s1","variance_k2_s1", "length_scale_k2_s2","variance_k2_s2",    "length_scale_k2_s3","variance_k2_s3")
+)
+
+save(
+  fit_4,
+  file = "fit_4.RData"
+)
+
+load("./fits/fit_4.RData")
+
+
+post_fit_4 <- rstan::extract(fit_4)
+#fit_n <- apply(post_fit_4$fit, 2, mean) 
+
+library(tidyverse)
+
+fit_summary <- summary(fit_4)$summary
+n <- nrow(data_even_shorter)
+
+extract_stat <- function(param, stat) fit_summary[paste0(param, "[", 1:n, "]"), stat]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared      = extract_stat("fit", "mean"), #extract_stat("eff_1", "mean") + fit_summary["intercept_s2", "mean"],
+    shared_lo   = extract_stat("fit", "2.5%"), # + fit_summary["intercept_s2", "mean"],
+    shared_hi   = extract_stat("fit", "97.5%"),# + fit_summary["intercept_s2", "mean"],
+    individual  = extract_stat("fit",   "mean"),
+    ind_lo      = extract_stat("fit",   "2.5%"),
+    ind_hi      = extract_stat("fit",   "97.5%")
+  )
+
+p<-ggplot(plot_df, aes(x = mnths)) +
+  # Individual CI ribbons
+#  geom_ribbon(aes(ymin = ind_lo, ymax = ind_hi, fill = factor(id)),
+#              alpha = 0.15) +
+  # Shared CI ribbon
+  geom_ribbon(aes(ymin = shared_lo, ymax = shared_hi),
+              fill = "grey30", alpha = 0.25) +
+  # Raw data
+  geom_point(aes(y = lifesatisfaction, color = factor(id)),
+             alpha = 0.4, size = 1.5) +
+  # Individual fitted lines
+  geom_line(aes(y = individual, color = factor(id), group = id),
+            linewidth = 0.6, alpha = 0.8) +
+  # Shared GP line
+  geom_line(aes(y = shared),
+            color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = c(-24, 24),
+             linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0,
+             linetype = "solid", color = "grey40", alpha = 0.5) +
+  labs(
+    x = "Months relative to event",
+    y = "Life satisfaction",
+    #color = "Participant", fill = "Participant",
+    #title = "Shared trend (dashed) with 95% CI and individual trajectories"
+  ) +
+    theme_bw() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=20,face="bold", color = "black"),
+    axis.line = element_line(color='black'),
+    plot.background = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    legend.position="none")
+
+ggsave("gp_inf.png", p, width = 10, height = 7,dpi = 300)
+  #theme_minimal()
+```
+
+# priors 2
+```{r}
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  
+)
+
+fit_5 <- stan(
+  file = "C:/Users/margo/stan/hierarchical_changepoint_intercepts_priors_2.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit_5,
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",    "sigma")
+)
+
+save(
+  fit_5,
+  file = "fit_5.RData"
+)
+
+load("./fits/fit_5.RData")
+
+
+post_fit_5 <- rstan::extract(fit_5)
+#fit_n <- apply(post_fit_4$fit, 2, mean) 
+
+library(tidyverse)
+
+fit_summary <- summary(fit_5)$summary
+n <- nrow(data_even_shorter)
+
+extract_stat <- function(param, stat) fit_summary[paste0(param, "[", 1:n, "]"), stat]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared      = extract_stat("fit", "mean"), #extract_stat("eff_1", "mean") + fit_summary["intercept_s2", "mean"],
+    shared_lo   = extract_stat("fit", "2.5%"), # + fit_summary["intercept_s2", "mean"],
+    shared_hi   = extract_stat("fit", "97.5%"),# + fit_summary["intercept_s2", "mean"],
+    individual  = extract_stat("fit",   "mean"),
+    ind_lo      = extract_stat("fit",   "2.5%"),
+    ind_hi      = extract_stat("fit",   "97.5%")
+  )
+
+ggplot(plot_df, aes(x = mnths)) +
+  # Individual CI ribbons
+#  geom_ribbon(aes(ymin = ind_lo, ymax = ind_hi, fill = factor(id)),
+#              alpha = 0.15) +
+  # Shared CI ribbon
+  geom_ribbon(aes(ymin = shared_lo, ymax = shared_hi),
+              fill = "grey30", alpha = 0.25) +
+  # Raw data
+  geom_point(aes(y = lifesatisfaction, color = factor(id)),
+             alpha = 0.4, size = 1.5) +
+  # Individual fitted lines
+  geom_line(aes(y = individual, color = factor(id), group = id),
+            linewidth = 0.6, alpha = 0.8) +
+  # Shared GP line
+  geom_line(aes(y = shared),
+            color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = c(-12, 12),
+             linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0,
+             linetype = "solid", color = "grey40", alpha = 0.5) +
+  labs(
+    x = "Months relative to event",
+    y = "Life satisfaction",
+    color = "Participant", fill = "Participant",
+    title = "Shared trend (dashed) with 95% CI and individual trajectories"
+  ) +
+  theme_minimal()
+```
+
+# priors 3
+```{r}
+data_even_shorter <- data_even_shorter %>%
+  #select(id, lifesatisfaction, mnths) %>%
+ ## filter(!is.na(lifesatisfaction), !is.na(mnths)) %>%
+#  arrange(id, mnths) %>%
+  mutate(id_int = as.integer(factor(id)))
+
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  
+)
+
+fit_6 <- stan(
+  file = "./stan/hierarchical_changepoint_intercepts_priors_3.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit_6,
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",    "sigma", "length_scale_k2_s1","variance_k2_s1", "length_scale_k2_s2","variance_k2_s2",    "length_scale_k2_s3","variance_k2_s3")
+)
+save(
+  fit_6,
+  file = "fit_6.2.RData"
+)
+
+load("./fits/fit_6.RData")
+
+library(tidyverse)
+
+fit_summary_6 <- summary(fit_6)$summary
+n <- nrow(data_even_shorter)
+
+extract_stat <- function(param, stat) fit_summary_6[paste0(param, "[", 1:n, "]"), stat]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared      = extract_stat("fit", "mean"), #extract_stat("eff_1", "mean") + fit_summary["intercept_s2", "mean"],
+    shared_lo   = extract_stat("fit", "2.5%"), # + fit_summary["intercept_s2", "mean"],
+    shared_hi   = extract_stat("fit", "97.5%"),# + fit_summary["intercept_s2", "mean"],
+    individual  = extract_stat("fit",   "mean"),
+    ind_lo      = extract_stat("fit",   "2.5%"),
+    ind_hi      = extract_stat("fit",   "97.5%")
+  )
+
+ggplot(plot_df, aes(x = mnths)) +
+  # Individual CI ribbons
+ # geom_ribbon(aes(ymin = ind_lo, ymax = ind_hi, fill = factor(id)),  alpha = 0.1) +
+  # Shared CI ribbon
+  #geom_ribbon(aes(ymin = shared_lo, ymax = shared_hi),     fill = "grey30", alpha = 0.25) +
+  # Raw data
+  geom_point(aes(y = lifesatisfaction, color = factor(id)),  alpha = 0.4, size = 1.5) +
+  # Individual fitted lines
+  geom_line(aes(y = individual, color = factor(id), group = id),   linewidth = 0.6, alpha = 0.8) +
+  # Shared GP line
+#  geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = c(-24, 24),       linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0, linetype = "solid", color = "grey40", alpha = 0.5) +
+  labs(
+    x = "Months relative to event",
+    y = "Life satisfaction",
+    color = "Participant", fill = "Participant",
+    title = "Shared trend (dashed) with 95% CI and individual trajectories"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+library(lattice )
+histogram( ~lifesatisfaction , data = data_even_shorter)
+```
+
+# priors 3
+```{r}
+data_even_shorter <- data_even_shorter %>%
+  #select(id, lifesatisfaction, mnths) %>%
+ ## filter(!is.na(lifesatisfaction), !is.na(mnths)) %>%
+#  arrange(id, mnths) %>%
+  mutate(id_int = as.integer(factor(id)))
+
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  
+)
+
+fit_7 <- stan(
+  file = "./stan/hierarchical_changepoint_intercepts_priors_4.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit_7,
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",    "sigma", "length_scale_k2_s1","variance_k2_s1", "length_scale_k2_s2","variance_k2_s2",    "length_scale_k2_s3","variance_k2_s3", "loc1", "loc2", "steepness1", "steepness2")
+)
+save(
+  fit_7,
+  file = "fit_7.RData"
+)
+
+load("./fits/fit_7.RData")
+
+library(tidyverse)
+
+fit_8
+
+post_fit <- rstan::extract(fit_8)
+fit_summary_7 <- summary(fit_8)$summary
+n <- nrow(data_even_shorter)
+
+extract_stat <- function(param, stat) fit_summary_7[paste0(param, "[", 1:n, "]"), stat]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared      = extract_stat("fit", "mean"), #extract_stat("eff_1", "mean") + fit_summary["intercept_s2", "mean"],
+    shared_lo   = extract_stat("fit", "2.5%"), # + fit_summary["intercept_s2", "mean"],
+    shared_hi   = extract_stat("fit", "97.5%"),# + fit_summary["intercept_s2", "mean"],
+    individual  = extract_stat("fit",   "mean"),
+    ind_lo      = extract_stat("fit",   "2.5%"),
+    ind_hi      = extract_stat("fit",   "97.5%")
+  )
+
+ggplot(plot_df, aes(x = mnths)) +
+  # Individual CI ribbons
+ # geom_ribbon(aes(ymin = ind_lo, ymax = ind_hi, fill = factor(id)),  alpha = 0.1) +
+  # Shared CI ribbon
+  #geom_ribbon(aes(ymin = shared_lo, ymax = shared_hi),     fill = "grey30", alpha = 0.25) +
+  # Raw data
+  geom_point(aes(y = lifesatisfaction, color = factor(id)),  alpha = 0.4, size = 1.5) +
+  # Individual fitted lines
+  geom_line(aes(y = individual, color = factor(id), group = id),   linewidth = 0.6, alpha = 0.8) +
+  # Shared GP line
+#  geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = c(-24, 24),       linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0, linetype = "solid", color = "grey40", alpha = 0.5) +
+  labs(
+    x = "Months relative to event",
+    y = "Life satisfaction",
+    color = "Participant", fill = "Participant",
+    title = "Shared trend (dashed) with 95% CI and individual trajectories"
+  ) +
+  theme_minimal()
+```
+# priors 5
+```{r}
+data_even_shorter <- data_even_shorter %>%
+  #select(id, lifesatisfaction, mnths) %>%
+ ## filter(!is.na(lifesatisfaction), !is.na(mnths)) %>%
+#  arrange(id, mnths) %>%
+  mutate(id_int = as.integer(factor(id)))
+
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  
+)
+
+fit_8 <- stan(
+  file = "./stan/hierarchical_changepoint_intercepts_priors_5.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit_8,
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",    "sigma", "length_scale_k2_s1","variance_k2_s1", "length_scale_k2_s2","variance_k2_s2",    "length_scale_k2_s3","variance_k2_s3", "loc1", "loc2", "steepness1", "steepness2")
+)
+save(
+  fit_8,
+  file = "fit_7.RData"
+)
+
+#load("./fits/fit_8.RData")
+
+library(tidyverse)
+
+fit_summary_8 <- summary(fit_8)$summary
+n <- nrow(data_even_shorter)
+
+extract_stat <- function(param, stat) fit_summary_8[paste0(param, "[", 1:n, "]"), stat]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared      = extract_stat("fit", "mean"), #extract_stat("eff_1", "mean") + fit_summary["intercept_s2", "mean"],
+    shared_lo   = extract_stat("fit", "2.5%"), # + fit_summary["intercept_s2", "mean"],
+    shared_hi   = extract_stat("fit", "97.5%"),# + fit_summary["intercept_s2", "mean"],
+    individual  = extract_stat("fit",   "mean"),
+    ind_lo      = extract_stat("fit",   "2.5%"),
+    ind_hi      = extract_stat("fit",   "97.5%")
+  )
+
+ggplot(plot_df, aes(x = mnths)) +
+  # Individual CI ribbons
+ # geom_ribbon(aes(ymin = ind_lo, ymax = ind_hi, fill = factor(id)),  alpha = 0.1) +
+  # Shared CI ribbon
+  #geom_ribbon(aes(ymin = shared_lo, ymax = shared_hi),     fill = "grey30", alpha = 0.25) +
+  # Raw data
+  geom_point(aes(y = lifesatisfaction, color = factor(id)),  alpha = 0.4, size = 1.5) +
+  # Individual fitted lines
+  geom_line(aes(y = individual, color = factor(id), group = id),   linewidth = 0.6, alpha = 0.8) +
+  # Shared GP line
+#  geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = c(-24, 24),       linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0, linetype = "solid", color = "grey40", alpha = 0.5) +
+  labs(
+    x = "Months relative to event",
+    y = "Life satisfaction",
+    color = "Participant", fill = "Participant",
+    title = "Shared trend (dashed) with 95% CI and individual trajectories"
+  ) +
+  theme_minimal()
+
+```
+#####################################################################################final
+# informative
+```{r}
+data_even_shorter <- data_even_shorter %>%
+  #select(id, lifesatisfaction, mnths) %>%
+ ## filter(!is.na(lifesatisfaction), !is.na(mnths)) %>%
+#  arrange(id, mnths) %>%
+  mutate(id_int = as.integer(factor(id)))
+
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  
+)
+
+fit_i <- stan(
+  file = "./stan/informative.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+print(
+  fit_i,
+  pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",    "sigma", "length_scale_k2_s1","variance_k2_s1", "length_scale_k2_s2","variance_k2_s2",    "length_scale_k2_s3","variance_k2_s3", "loc1", "loc2", "steepness1", "steepness2")
+)
+save(
+  fit_i,
+  file = "fit_inf.RData"
+)
+
+load("./fits/fit_inf.RData")
+
+library(tidyverse)
+
+fit_summary_i <- summary(fit_i)$summary
+n <- nrow(data_even_shorter)
+
+extract_stat <- function(param, stat) fit_summary_i[paste0(param, "[", 1:n, "]"), stat]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared      = extract_stat("fit", "mean"), #extract_stat("eff_1", "mean") + fit_summary["intercept_s2", "mean"],
+    shared_lo   = extract_stat("fit", "2.5%"), # + fit_summary["intercept_s2", "mean"],
+    shared_hi   = extract_stat("fit", "97.5%"),# + fit_summary["intercept_s2", "mean"],
+    individual  = extract_stat("fit",   "mean"),
+    ind_lo      = extract_stat("fit",   "2.5%"),
+    ind_hi      = extract_stat("fit",   "97.5%")
+  )
+
+p<-ggplot(plot_df, aes(x = mnths)) +
+  # Individual CI ribbons
+ # geom_ribbon(aes(ymin = ind_lo, ymax = ind_hi, fill = factor(id)),  alpha = 0.1) +
+  # Shared CI ribbon
+  geom_ribbon(aes(ymin = shared_lo, ymax = shared_hi),     fill = "grey30", alpha = 0.25) +
+  # Raw data
+  geom_point(aes(y = lifesatisfaction, color = factor(id)),  alpha = 0.4, size = 1.5) +
+  # Individual fitted lines
+  geom_line(aes(y = individual, color = factor(id), group = id),   linewidth = 0.6, alpha = 0.8) +
+  # Shared GP line
+  geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = c(-24, 24),       linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0, linetype = "solid", color = "grey40", alpha = 0.5) +
+  labs(
+    x = "Months relative to event",
+    y = "Life satisfaction",
+  #  color = "Participant", fill = "Participant"#,
+    #title = "Shared trend (dashed) with 95% CI and individual trajectories"
+  )  +
+  
+  theme_bw() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=20,face="bold", color = "black"),
+    axis.line = element_line(color='black'),
+    plot.background = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    legend.position="none")
+
+ggsave("gp_less_inf.png", p, width = 10, height = 7,dpi = 300)
+ # theme(,
+ #        
+ #           panel.grid.major = element_blank(),
+ #    panel.grid.minor = element_blank(),)
+```
+
+
+# noninformative
+```{r}
+data_even_shorter <- data_even_shorter %>%
+  #select(id, lifesatisfaction, mnths) %>%
+ ## filter(!is.na(lifesatisfaction), !is.na(mnths)) %>%
+#  arrange(id, mnths) %>%
+  mutate(id_int = as.integer(factor(id)))
+
+stan_data <- list(
+  N       = nrow(data_even_shorter),
+  J       = length(unique(data_even_shorter$id_int)),
+  x       = data_even_shorter$mnths,
+  y       = data_even_shorter$lifesatisfaction,
+  subject = as.integer(as.factor(data_even_shorter$id_int)),
+  z       = pnorm(data_even_shorter$mnths, mean = 0, sd = 3)  
+)
+
+fit_n <- stan(
+  file = "./stan/noninformative.stan",
+  data = stan_data,
+  chains = 4,
+  iter = 1000,
+  warmup = 400,
+  seed = 123,
+  control = list(adapt_delta = 0.9)
+)
+
+beep()
+
+# print(
+#   fit_8,
+#   pars = c("length_scale_k1_s1","variance_k1_s1", "length_scale_k1_s2","variance_k1_s2",    "length_scale_k1_s3","variance_k1_s3", "intercept_s1",  "intercept_s2"  , "intercept_s3",    "sigma", "length_scale_k2_s1","variance_k2_s1", "length_scale_k2_s2","variance_k2_s2",    "length_scale_k2_s3","variance_k2_s3", "loc1", "loc2", "steepness1", "steepness2")
+# )
+save(
+  fit_n,
+  file = "fit_noninf.RData"
+)
+
+load("./fits/fit_noninf.RData")
+
+library(tidyverse)
+
+fit_summary_n <- summary(fit_n)$summary
+n <- nrow(data_even_shorter)
+
+extract_stat <- function(param, stat) fit_summary_n[paste0(param, "[", 1:n, "]"), stat]
+
+plot_df <- data_even_shorter %>%
+  mutate(
+    shared      = extract_stat("fit", "mean"), #extract_stat("eff_1", "mean") + fit_summary["intercept_s2", "mean"],
+    shared_lo   = extract_stat("fit", "2.5%"), # + fit_summary["intercept_s2", "mean"],
+    shared_hi   = extract_stat("fit", "97.5%"),# + fit_summary["intercept_s2", "mean"],
+    individual  = extract_stat("fit",   "mean"),
+    ind_lo      = extract_stat("fit",   "2.5%"),
+    ind_hi      = extract_stat("fit",   "97.5%")
+  )
+
+ggplot(plot_df, aes(x = mnths)) +
+  # Individual CI ribbons
+  geom_ribbon(aes(ymin = ind_lo, ymax = ind_hi, fill = factor(id)),  alpha = 0.1) +
+  # Shared CI ribbon
+  #geom_ribbon(aes(ymin = shared_lo, ymax = shared_hi),     fill = "grey30", alpha = 0.25) +
+  # Raw data
+  geom_point(aes(y = lifesatisfaction, color = factor(id)),  alpha = 0.4, size = 1.5) +
+  # Individual fitted lines
+  geom_line(aes(y = individual, color = factor(id), group = id),   linewidth = 0.6, alpha = 0.8) +
+  # Shared GP line
+  geom_line(aes(y = shared), color = "black", linewidth = 0.6, linetype = "dashed") +
+  geom_vline(xintercept = c(-24, 24),       linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0, linetype = "solid", color = "grey40", alpha = 0.5) +
+  labs(
+    x = "Months relative to event",
+    y = "Life satisfaction",
+    color = "Participant", fill = "Participant"#,
+    #title = "Shared trend (dashed) with 95% CI and individual trajectories"
+  ) +
+  theme_minimal()
+```

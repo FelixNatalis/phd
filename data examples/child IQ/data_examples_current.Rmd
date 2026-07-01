@@ -1,0 +1,2047 @@
+```{r}
+library(lineqGPR)
+library(stringr)
+library(reshape2)
+library(tidyr)
+library(beepr)      
+#library(rprojroot)
+#root <- has_file(".Bayesian-Workflow-root")$make_fix_file()
+library(tidyverse)
+library(tictoc)
+mytoc <- \() {
+  toc(func.toc = \(tic, toc, msg) {
+    sprintf("%s took %s sec", msg, as.character(signif(toc - tic, 2)))
+  })}
+library(cmdstanr)
+# CmdStanR output directory makes Quarto cache to work
+#dir.create(root("stan", "stan_output"), showWarnings = FALSE)
+#options(cmdstanr_output_dir = root("stan", "stan_output"))
+library(posterior)
+options(pillar.neg = FALSE,
+        pillar.subtle = FALSE,
+        pillar.sigfig = 2)
+library(tinytable)
+options(tinytable_format_num_fmt = "significant_cell",
+        tinytable_format_digits = 2,
+        tinytable_tt_digits = 2)
+library(loo)
+library(bayesplot)
+theme_set(bayesplot::theme_default(base_family = "sans"))
+library(ggdist)
+library(patchwork)
+library(ggrepel)
+library(RColorBrewer)
+set1 <- brewer.pal(7, "Set1")
+Sys.setlocale("LC_TIME", "en_GB.utf8")
+
+library(dplyr)
+library(rstan)
+library(ggplot2)
+
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+set.seed(123)
+```
+
+
+```{r}
+#data <- read_csv( "C:/Users/zubareva/OneDrive - Tilburg University/Desktop/code/phd/data examples/child IQ/data/kid_iq.csv")
+data <- read_csv( "C:/Users/margo/OneDrive/Рабочий стол/phd code/data examples/child IQ/data/kid_iq.csv")
+names(data)[names(data)=="...1"] <- "datapoint"
+
+min_IQ = 0
+max_IQ = 160
+range01 <- function(x, ...){(x - min_IQ) / (max_IQ - min_IQ)}
+data$kid_score <- range01(data$kid_score)
+data$mom_iq <- range01(data$mom_iq)
+data$mom_hs <- as.factor(data$mom_hs)
+
+p1<- ggplot(data, aes(mom_iq, kid_score, color = factor(mom_hs))) + geom_point() + geom_smooth()
+p1
+p2<- ggplot(data, aes(mom_iq, kid_score, color = factor(mom_hs))) + geom_point() + geom_smooth(method = "lm")
+p2
+ggsave("loess.png", p1, width = 10, height = 6,dpi = 180)
+ggsave("lm.png", p2, width = 10, height = 6,dpi = 180)
+
+data_no_hs <-  data[data$mom_hs==0,]
+data_hs<- data[data$mom_hs==1,]
+
+# _____ plots____
+
+clr_bg     <- "#FFFFFF" #"#0f1117"
+clr_panel  <- "#FFFFFF"#"#181b24"
+clr_grid   <- "#262b38"
+clr_text   <- "#c8cfe0"
+clr_sub    <- "#6b7694"
+clr_line   <- "#7eb8f7"
+clr_accent <- "#f97316"
+clr_pos    <- "#4ade80"
+clr_mid    <- "#f0c040"
+clr_neg    <- "#fb7185"
+
+ 
+theme_mood <- function(base_size = 12) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      plot.background  = element_rect(fill = clr_bg,    color = NA),
+      panel.background = element_rect(fill = clr_panel, color = NA),
+      panel.grid.major = element_line(color = clr_grid, linewidth = .3),
+      panel.grid.minor = element_blank(),
+      axis.text        = element_text(color = clr_sub,  size = rel(.85)),
+      axis.title       = element_text(color = clr_text, size = rel(.9)),
+      plot.title       = element_text(color = clr_text, size = rel(1.15),
+                                      face = "bold", margin = margin(b = 3)),
+      plot.subtitle    = element_text(color = clr_sub,  size = rel(.82),
+                                      margin = margin(b = 8)),
+      legend.background = element_rect(fill = clr_panel, color = NA),
+      legend.text       = element_text(color = clr_sub),
+      legend.title      = element_text(color = clr_text),
+      strip.text        = element_text(color = clr_text, face = "bold"),
+      strip.background  = element_rect(fill = clr_grid,  color = NA),
+      plot.margin       = margin(12, 14, 10, 14)
+    )
+}
+theme_set(theme_mood())
+```
+
+### NO HS
+
+# unconstrained
+```{r}
+x <- data_no_hs$mom_iq
+y <- data_no_hs$kid_score
+model_no_hs_u <- create(
+  class = "lineqGP",
+  x = x,
+  y = y,
+  constrType = c("boundedness")
+)
+model_no_hs_u$m = 100
+model_no_hs_u$varnoise <- 1e-2
+model_no_hs_u$bounds <- c(-10,10)
+model_no_hs_u <- augment(model_no_hs_u)
+
+sim.model_no_hs_u <- simulate(model_no_hs_u,
+                      xtest = x,
+                      nsim = 1e2,
+                      seed = 1)
+beep()
+ysim <- sim.model_no_hs_u$ysim
+qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
+pred_no_hs_u <- data.frame(
+  da_x = x,
+  da_y = y,
+  gp = apply(ysim, 1, mean)
+)
+
+ggplot() + geom_point(data = pred_no_hs_u, aes(x = da_x, y = da_y)) + geom_line(data = pred_no_hs_u, aes(x = da_x, y = gp), color = "red") +     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
+```
+
+# monotonic bounded
+
+```{r}
+x <- data_no_hs$mom_iq
+y <- data_no_hs$kid_score
+model_no_hs <- create(
+  class = "lineqGP",
+  x = x,
+  y = y,
+  constrType = c("boundedness", "monotonicity"),
+  m = 30
+)
+#model_no_hs$m <- 100
+model_no_hs$bounds[1, ] <- c(0, 1)
+model_no_hs$varnoise <- 1e-2
+
+sim.model_no_hs <- simulate(model_no_hs,
+                      xtest = x,
+                      nsim = 1e2,
+                      seed = 1)
+beep()
+
+ysim <- sim.model_no_hs$ysim
+qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
+pred_no_hs <- data.frame(
+  da_x = x,
+  da_y = y,
+  gp = apply(ysim, 1, mean)
+)
+
+ggplot() + geom_point(data = pred_no_hs, aes(x = da_x, y = da_y)) + geom_line(data = pred_no_hs, aes(x = da_x, y = gp), color = "red") +     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
+```
+
+# HS
+
+# unconstrained
+```{r}
+x <- data_hs$mom_iq
+y <- data_hs$kid_score
+model_hs_u <- create(
+  class = "lineqGP",
+  x = x,
+  y = y,
+  constrType = c("boundedness"),
+  m = 30
+)
+#model_hs_u$m <- 100
+model_hs_u$varnoise <- 1e-2
+model_hs_u$bounds <- c(-10,10)
+model_hs_u <- augment(model_hs_u)
+
+sim.model_hs_u <- simulate(model_hs_u,
+                      xtest = x,
+                      nsim = 1e2,
+                      seed = 1)
+beep()
+
+ysim <- sim.model_hs_u$ysim
+qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
+pred_hs_u <- data.frame(
+  da_x = x,
+  da_y = y,
+  gp = apply(ysim, 1, mean)
+)
+ggplot(pred_hs_u, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")+     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
+```
+
+# monotonic bounded 
+```{r}
+x <- data_hs$mom_iq
+y <- data_hs$kid_score
+model <- create(
+  class = "lineqGP",
+  x = x,
+  y = y,
+  constrType = c("boundedness", "monotonicity"),
+  m = 30
+)
+#model$m <- 100
+model$bounds[1, ] <- c(0, 1)
+model$varnoise <- 1e-2
+
+sim.model <- simulate(model,
+                      xtest = x,
+                      nsim = 1e2,
+                      seed = 1)
+beep()
+
+ysim <- sim.model$ysim
+qtls <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
+pred_hs <- data.frame(
+  da_x = x,
+  da_y = y,
+  gp = apply(ysim, 1, mean)
+)
+ggplot(pred_hs, aes(da_x, da_y)) + geom_point() + geom_line(aes(da_x, gp), color = "red")+     geom_ribbon(aes(x = x, ymin = qtls[1, ], ymax = qtls[2, ]), fill = "gray60", alpha = 0.4)
+```
+
+```{r}
+points <- geom_point(data = data, aes(x = (mom_iq), y = (kid_score), color = factor(mom_hs)))
+
+line_hs<- geom_line(data = pred_hs_u, aes(x = da_x, y = gp), color = "darkslategray4", linewidth = 1)
+
+line_no_hs <- geom_line(data = pred_no_hs, aes(x = da_x, y = gp), color = "indianred3", linewidth = 1)
+
+qtls_hs <- apply(sim.model$ysim, 1, quantile, probs = c(0.05, 0.95))
+qtls_no_hs <- apply(sim.model_no_hs$ysim, 1, quantile, probs = c(0.05, 0.95))
+
+ci_hs <- geom_ribbon(aes(x = data_hs$mom_iq, ymin = qtls_hs[1, ], ymax = qtls_hs[2, ]), fill = "gray60", alpha = 0.4)
+  
+ci_no_hs <- geom_ribbon(aes(x = data_no_hs$mom_iq, ymin = qtls_no_hs[1, ], ymax = qtls_no_hs[2, ]), fill = "gray60", alpha = 0.4)
+
+p1 <- ggplot()  + points  + ci_hs + ci_no_hs + line_hs + line_no_hs
+p1
+ggsave("constrained_gps.png", p1, width = 10, height = 6,dpi = 180)
+```
+## PREDICTION
+# NO HS 
+```{r}
+x <- data_no_hs$mom_iq
+y <- data_no_hs$kid_score
+x_test_no_hs <- append(seq(0, 0.45, by = 0.05), append(x, seq(0.8, 1, by = 0.05)))
+model_no_hs <- create(
+  class = "lineqGP",
+  x = x,
+  y = y,
+  constrType = c("boundedness", "monotonicity"),
+  m = 30
+)
+model_no_hs$bounds[1, ] <- c(0, 1)
+model_no_hs$varnoise <- 1e-2
+
+sim.model_no_hs <- simulate(model_no_hs,
+                            xtest = x_test_no_hs,
+                            nsim = 1e2,
+                            seed = 1)
+beep()
+
+ysim <- sim.model_no_hs$ysim
+qtls_pred_no_hs <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
+points <- data.frame(x = (x), y = (y))
+ymean = apply(ysim, 1, mean)
+lines_pred_no_hs <- data.frame(x = x_test_no_hs, y = ymean)
+
+ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines_pred_no_hs, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test_no_hs, ymin = qtls_pred_no_hs[1, ], ymax = qtls_pred_no_hs[2, ]), fill = "gray60", alpha = 0.4)
+```
+
+## HS
+# monotonic bounded 
+```{r}
+x <- data_hs$mom_iq
+y <- data_hs$kid_score
+x_test_hs <- append(seq(0, 0.40, by = 0.05),append(x, seq(0.8, 1, by = 0.05)))
+model <- lineqGPR::create(
+  class = "lineqGP",
+  x = x,
+  y = y,
+  constrType = c("boundedness", "monotonicity"),
+  m = 30
+)
+
+model$bounds[1, ] <- c(0, 1)
+model$varnoise <- 1e-2
+
+sim.model <- simulate(model,
+                      xtest = x_test_hs,
+                      nsim = 1e2,
+                      seed = 1)
+beep()
+
+ysim <- sim.model$ysim
+qtls_pred_hs <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
+points<- data.frame(x = (x),
+  y = (y))
+ymean = apply(ysim, 1, mean)
+lines_pred_hs <- data.frame(x = x_test_hs, y = ymean)
+
+ggplot( ) + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines_pred_hs, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test_hs, ymin = qtls_pred_hs[1, ], ymax = qtls_pred_hs[2, ]), fill = "gray60", alpha = 0.4)
+```
+# NO HS unconstrained
+```{r}
+x <- data_no_hs$mom_iq
+y <- data_no_hs$kid_score
+x_test <- append(seq(0, 0.45, by = 0.05), append(x, seq(0.8, 1, by = 0.05)))
+model_no_hs_u <- create(
+  class = "lineqGP",
+  x = x,
+  y = y,
+  constrType = c("boundedness"),
+  m = 30
+)
+model_no_hs_u$bounds <- c(-10,10)
+model_no_hs_u$varnoise <- 1e-2
+
+sim.model_no_hs_u <- simulate(model_no_hs_u,
+                            xtest = x_test,
+                            nsim = 1e2,
+                            seed = 1)
+beep()
+
+ysim <- sim.model_no_hs_u$ysim
+qtls_pred_no_hs_u <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
+points <- data.frame(x = (x), y = (y))
+ymean = apply(ysim, 1, mean)
+lines_pred_no_hs_u <- data.frame(x = x_test, y = ymean)
+
+ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines_pred_no_hs_u, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls_pred_no_hs_u[1, ], ymax = qtls_pred_no_hs_u[2, ]), fill = "gray60", alpha = 0.4)
+```
+
+# HS unconstrained
+```{r}
+x <- data_hs$mom_iq
+y <- data_hs$kid_score
+x_test <- append(seq(0, 0.40, by = 0.05),append(x, seq(0.8, 1, by = 0.05)))
+model_hs_u <- create(
+  class = "lineqGP",
+  x = x,
+  y = y,
+  constrType = c("boundedness"),
+  m = 30
+)
+model_hs_u$bounds <- c(-10,10)
+model_hs_u$varnoise <- 1e-2
+
+sim.model_hs_u <- simulate(model_hs_u,
+                            xtest = x_test,
+                            nsim = 1e2,
+                            seed = 1)
+beep()
+
+ysim <- sim.model_hs_u$ysim
+qtls_pred_hs_u <- apply(ysim, 1, quantile, probs = c(0.05, 0.95))
+
+points <- data.frame(x = (x), y = (y))
+ymean = apply(ysim, 1, mean)
+lines_pred_hs_u <- data.frame(x = x_test, y = ymean)
+
+ggplot() + geom_point(data = points, aes(x = x, y = y)) + geom_line(data = lines_pred_hs_u, aes(x = x, y = y), color = "red") + geom_ribbon(aes(x = x_test, ymin = qtls_pred_hs_u[1, ], ymax = qtls_pred_hs_u[2, ]), fill = "gray60", alpha = 0.4)
+```
+
+```{r}
+points <- geom_point(data = data, aes(x = (mom_iq), y = (kid_score), color = factor(mom_hs)))
+
+line_hs<- geom_line(data = lines_pred_hs, aes(x = x, y = y), color = "darkslategray4", linewidth = 1)
+
+line_no_hs <- geom_line(data = lines_pred_no_hs, aes(x = x, y = y), color = "indianred3", linewidth = 1)
+
+line_hs_u<- geom_line(data = lines_pred_hs_u, aes(x = x, y = y), color = "darkseagreen4", linewidth = 1)
+
+line_no_hs_u <- geom_line(data = lines_pred_no_hs_u, aes(x = x, y = y), color = "orange4", linewidth = 1)
+
+ci_hs <- geom_ribbon(aes(x = x_test_hs, ymin = qtls_pred_hs[1, ], ymax = qtls_pred_hs[2, ]), fill = "lightskyblue", alpha = 0.4)
+  
+ci_no_hs <- geom_ribbon(aes(x = x_test_no_hs, ymin = qtls_pred_no_hs[1, ], ymax = qtls_pred_no_hs[2, ]), fill = "mistyrose2", alpha = 0.4)
+
+ci_hs_u <- geom_ribbon(aes(x = x_test_hs, ymin = qtls_pred_hs_u[1, ], ymax = qtls_pred_hs_u[2, ]), fill = "palegreen2", alpha = 0.3)
+  
+ci_no_hs_u <- geom_ribbon(aes(x = x_test_no_hs, ymin = qtls_pred_no_hs_u[1, ], ymax = qtls_pred_no_hs_u[2, ]), fill = "lightyellow2", alpha = 0.3)
+
+p1 <- ggplot()  + points + ci_hs + ci_no_hs + line_hs + line_no_hs 
+p1
+
+p2 <- ggplot()  + points  + ci_hs_u + ci_no_hs_u + line_hs_u + line_no_hs_u
+p2
+
+
+p3 <- ggplot()  + geom_point(data = data_hs, aes(x = (mom_iq), y = (kid_score)), color = "darkslategray3")  + ci_hs + ci_hs_u + line_hs + line_hs_u
+p3
+
+p4 <- ggplot()  + geom_point(data = data_no_hs, aes(x = (mom_iq), y = (kid_score)), color = "indianred2")  + ci_no_hs + ci_no_hs_u + line_no_hs + line_no_hs_u
+p4
+
+ggsave("pred_no_hs.png", p4, width = 10, height = 6,dpi = 180)
+```
+
+
+
+```{r}
+# TODO compare models
+```
+
+## LGPR to induce group-based ANOVA
+
+```{r}
+require("lgpr")
+
+idx <- sample(data_hs$datapoint, 135, replace=FALSE)
+
+data_shorter <- data[-c(idx),] 
+
+m_1 <- lgp(
+  kid_score ~
+    gp(mom_iq) +  zs(mom_hs),
+  data = data_shorter,
+  sample_f = TRUE
+)
+
+summary(m_1)
+
+print(m_1)
+save(m_1, file="m_1.RData")
+load("m_1.RData")
+```
+```{r}
+# Define time sequence
+t <- append(append(seq(0, 0.4, by = 0.05), data_shorter$mom_iq), seq(0.9, 1, by = 0.05))
+
+# Generate prediction dataset
+x_pred <- lgpr::new_x(data_shorter, t, group_by = "mom_hs", x = "mom_iq")
+#x_pred <- lgpr::new_x(data_shorter, t, group_by = NA, x = "mom_iq")
+
+
+process_predictions <- function(predicted) {
+  # Extract and reshape predictions 
+  x <- as.data.frame(predicted@x)
+  y <- as.data.frame(predicted@h) %>%
+    pivot_longer(cols = everything()) %>%
+    dplyr::select(-name) #%>%   rename(y = value)
+
+  # Combine 
+  data <- cbind(x, y)
+  
+  return(data)
+}
+
+
+# Apply function for predictions for shared effect (f = fixed effect) and person-specific effect (r = random effects)
+pred1 <-lgpr::pred(m_1, x_pred,  verbose = FALSE)
+gp_pred_f <- process_predictions(pred1)
+pred2<- lgpr::pred(m_1, verbose = FALSE)
+gp_pred_r <- process_predictions(pred2)
+```
+
+```{r}
+ggplot(gp_pred_f, aes(x = mom_iq, y = value )) + 
+  geom_smooth(color = project_colors[2], size = 1) +  
+  geom_point(aes(y = value), color = project_colors[3], alpha = 0.7, size = 1.2)
+```
+
+```{r}
+ggplot(gp_pred_r, aes(x = mom_iq, y = value )) + 
+  geom_smooth(color = project_colors[2], size = 1) +  
+  geom_point(aes(y = value), color = project_colors[3], alpha = 0.7, size = 1.2)
+```
+```{r}
+# Extract posterior samples from fit
+posterior_samples <- pred(m_1)
+
+# Sort time points (months) for consistent plotting
+order <- order(data_shorter$mom_iq)
+mom_iqs <- data_shorter$mom_iq[order]
+posterior_samples <- posterior_samples@f_comp$`gp(mom_iq)`[, order]
+
+# Convert to tidy format for summarising
+df_draws <- as_tibble(posterior_samples)
+colnames(df_draws) <- as.character(seq_along(colnames(df_draws)))
+
+# Reshape to long format
+df_draws <- df_draws %>%
+  mutate(draw = row_number()) %>%
+  pivot_longer(
+    cols = -draw,
+    names_to = "iq_index",
+    values_to = "value"
+  ) %>%
+  mutate(
+    iq_index = as.integer(iq_index),
+    iq = mom_iqs[iq_index]
+  )
+
+# Randomly select 1,000 posterior draws
+set.seed(123)  # for reproducibility
+draw_ids <- sample(unique(df_draws$draw), 1000)
+
+# Filter the data to keep only the selected draws
+df_draws_sampled <- df_draws %>%
+  filter(draw %in% draw_ids)
+
+# Get original mean and SD of life satisfaction,
+# to denormalise predictions back to the original scale of life satisfaction
+#mean_ls <- mean(wido$lifesatisfaction)
+#sd_ls <- sd(wido$lifesatisfaction)
+
+
+# Compute 95% credible intervals per month
+summary_df <- df_draws_sampled %>%
+  group_by(iq) %>%
+  summarise(
+    lower_CI = quantile(value, 0.025),
+    upper_CI = quantile(value, 0.975),
+    .groups = "drop"
+  )
+#%>%
+ # mutate(lower_CI = lower_CI * sd_ls + mean_ls,
+  #       upper_CI = upper_CI * sd_ls + mean_ls
+  #)
+
+# not working
+```
+```{r}
+#plot_base + 
+ggplot()+
+  geom_line(data = gp_pred_r, aes(mom_iq, value, group = mom_hs,  color = factor(mom_hs)),, linewidth = 0.6) +
+#  geom_ribbon(data = summary_df, aes(ymin = lower_CI, ymax = upper_CI, x = month),
+        #      alpha = 0.2, fill = "firebrick4") +
+ # geom_line(data = gp_pred_f, aes(x = mom_iq, y = value),  color = "firebrick4", linewidth = 0.6) +
+  ggtitle("Gaussian Process Regression") +
+  theme(plot.title = element_text(size = 13, face = "bold"))
+```
+```{r}
+# Because we want to compare our predicted average trajectory, with the actual average trajectory, we need to merge the predicted dataframe with the original data
+gp_pred_f <- gp_pred_f %>%
+  dplyr::select(mom_iq, value)
+gp_pred_f <- merge(data_shorter, gp_pred_f, key = "mom_iq")
+
+# Now we can calculate R², MAE, and RMSE for the fixed effects predictions
+data.frame(
+  R2_FE = round(R2(gp_pred_f$value, gp_pred_f$m_lifesat_per_mnth), 2),
+  MAE_FE = round(MAE(gp_pred_f$value, gp_pred_f$m_lifesat_per_mnth), 2),
+  RMSE_FE = round(RMSE(gp_pred_f$value, gp_pred_f$m_lifesat_per_mnth), 2)
+)
+
+# TODO m_lifesat_per_mnth
+
+  # test_data <- test_data %>%
+  #   group_by(mnths) %>%
+  #   mutate(m_lifesat_per_mnth = mean(lifesatisfaction, na.rm = TRUE))
+  
+
+# Calculate R², MAE, and RMSE for the random effects predictions
+data.frame(
+  R2_RE = round(R2(gp_pred_r$value, gp_pred_r$kid_score), 2),
+  MAE_RE = round(MAE(gp_pred_r$value, gp_pred_r$kid_score), 2),
+  RMSE_RE = round(RMSE(gp_pred_r$value, gp_pred_r$kid_score), 2)
+)
+```
+
+```{r}
+
+# ── Assumes m_1 is already fitted with sample_f = TRUE ───────────────────────
+# m_1 <- lgp(kid_score ~ gp(mom_iq) + zs(mom_hs), data = data_shorter,
+#             sample_f = TRUE)
+
+# ── 0. Factor ordering ────────────────────────────────────────────────────────
+# Ensure "no hs" < "hs" so the zero-sum offset is negative for the lower group
+# data_shorter <- data_shorter |>
+#   mutate(mom_hs = factor(mom_hs, levels = c("no hs", "hs")))  # adjust strings if needed
+
+# ── 1. Recover the y scaling from the fit object ──────────────────────────────
+# lgpr always normalises kid_score internally (zero mean, unit SD).
+# pred() with sample_f = TRUE returns draws on that internal scale.
+# We back-transform manually: y_original = y_normalised * sd + mean
+
+y_mean <- mean(data_shorter$kid_score)
+y_sd   <- sd(data_shorter$kid_score)
+
+unscale <- function(x) x  + y_mean#* y_sd + y_mean
+
+# ── 2. Prediction grids ───────────────────────────────────────────────────────
+iq_grid <- seq(min(data_shorter$mom_iq), max(data_shorter$mom_iq), length.out = 120)
+
+x_hs <- data.frame(
+  mom_iq = iq_grid,
+  mom_hs = factor(1,    levels = levels(data_shorter$mom_hs))
+)
+x_nohs <- data.frame(
+  mom_iq = iq_grid,
+  mom_hs = factor(0, levels = levels(data_shorter$mom_hs))
+)
+x_shared <- x_hs   # group label irrelevant for gp(mom_iq)
+
+# ── 3. Run pred() with reduce = NULL ─────────────────────────────────────────
+# With sample_f = TRUE and an x supplied, pred() extrapolates the f draws to
+# the new grid via kernel regression.  The default reduce = mean collapses all
+# draws into one before extrapolation, leaving a single vector (lo = hi, wrong
+# scale).  reduce = NULL keeps every draw → a proper [S × P] draw matrix.
+n_draws <- nrow(get_draws(m_1))   # total posterior draws
+idx     <- sample(n_draws, min(200, n_draws))
+ 
+pred_hs    <- pred(m_1, x = x_hs,     draws = idx, verbose = FALSE)
+pred_nohs  <- pred(m_1, x = x_nohs,   draws = idx, verbose = FALSE)
+pred_share <- pred(m_1, x = x_shared, draws = idx, verbose = FALSE)
+# ── 4. Extract and unscale ───────────────────────────────────────────────────
+# Prediction object slots (sample_f = TRUE path):
+#   @f_comp  – list of length J, each element is a [S × P] draw matrix
+#              [[ 1 ]] = gp(mom_iq)   [[ 2 ]] = zs(mom_hs)
+#   @f       – [S × P] matrix of total signal draws (sum of all components)
+
+# Helper: summarise a draw matrix [S × P] → posterior mean + 95% CI
+draws_summary <- function(mat, iq_grid, group = NULL) {
+  mat <- unscale(mat)
+  df <- tibble(
+    mom_iq = iq_grid,
+    mean   = colMeans(mat),
+    lo     = apply(mat, 2, quantile, 0.025),
+    hi     = apply(mat, 2, quantile, 0.975)
+  )
+  if (!is.null(group)) df$mom_hs <- group
+  df
+}
+
+# Shared trend = component 1 = gp(mom_iq)
+df_shared <- draws_summary(pred_share@f_comp[[1]], iq_grid)
+
+# Group totals = @f  (comp1 + comp2)
+df_hs    <- draws_summary(pred_hs@f,   iq_grid, group = 1)
+df_nohs  <- draws_summary(pred_nohs@f, iq_grid, group = 0)
+
+df_groups <- bind_rows(df_hs, df_nohs) |>
+  mutate(mom_hs = factor(mom_hs, levels = c(0, 1)))
+
+# ── 5. Plot ───────────────────────────────────────────────────────────────────
+#pal_groups <- c(0 = "grey65", 1 = "grey20")
+
+p_m_1<- ggplot() +
+  # 95% CI ribbons for group curves
+  geom_ribbon(
+    data = df_groups,
+    aes(x = mom_iq, ymin = lo, ymax = hi, fill = mom_hs),
+    alpha = 0.18
+  ) +
+  # Group-specific total curves: f = gp(mom_iq) + zs(mom_hs)
+  geom_line(
+    data = df_groups,
+    aes(x = mom_iq, y = mean, colour = mom_hs, group = mom_hs),
+    linewidth = 0.85
+  ) +
+  # Shared trend: gp(mom_iq) only — dashed red
+  geom_line(
+    data      = df_shared,
+    aes(x = mom_iq, y = mean),
+    colour    = "firebrick4",
+    linewidth = 0.9,
+    linetype  = "dashed"
+  ) +
+  # Raw data
+  geom_point(
+    data  = data_shorter,
+    aes(x = mom_iq, y = kid_score, colour = mom_hs),
+    alpha = 0.4, size = 1.4
+  ) +
+ # scale_colour_manual(values = pal_groups, name = "Mother HS") +
+  #scale_fill_manual(values   = pal_groups, name = "Mother HS") +
+  labs(
+    x        = "Mother's IQ",
+    y        = "Child IQ score",
+    title    = "Functional ANOVA GP decomposition",
+    subtitle = "Dashed red = shared gp(mom_iq); lines = group totals [shared + zs offset]; ribbon = 95% CI"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "bottom")
+p_m_1
+ggsave("lgpr_ANOVA_m_1.png", p_m_1, width = 10, height = 6,dpi = 180)
+```
+```{r}
+t <- seq(0, 1, by = 0.01)
+x_pred <- new_x(data_shorter, t, x = "mom_iq", group_by = "mom_hs")
+
+p <- pred(m_1, x_pred, reduce = mean)
+
+plot_components(m_1,
+  pred = p,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
+
+plot_components(m_1,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
+
+# no_err??
+```
+
+```{r}
+
+# --- Extract posterior draws ---
+post_mat <- get_draws(m_1)                         # num_draws x num_params matrix
+post     <- post_mat[, grepl("^alpha|^ell|^sigma", colnames(post_mat)), drop = FALSE]
+post     <- as.data.frame(post)
+
+n <- nrow(post)
+
+# --- Prior draws (defaults: alpha ~ half-t(20), ell ~ log-normal(0,1), sigma^2 ~ inv-gamma(2,1)) ---
+prior_df <- data.frame(
+  `alpha[1]` = abs(rt(n, df = 20)),
+  `alpha[2]` = abs(rt(n, df = 20)),
+  `ell[1]`   = rlnorm(n, 0, 1),
+  `ell[2]`   = rlnorm(n, 0, 1),
+  `sigma[1]` = sqrt(1 / rgamma(n, shape = 2, rate = 1)),
+  check.names = FALSE
+)
+
+# --- Combine and tidy ---
+post_long  <- post  |> mutate(src = "posterior") |> pivot_longer(-src)
+prior_long <- prior_df |> mutate(src = "prior")   |> pivot_longer(-src)
+
+df <- bind_rows(post_long, prior_long) |>
+  mutate(
+    src  = factor(src, levels = c("prior", "posterior")),
+    name = recode(name,
+      `alpha[1]` = "a[1]",
+      `alpha[2]` = "a[2]",
+      `ell[1]`   = "l[1]",
+      `ell[2]`   = "l[2]",
+      `sigma[1]` = "σ"
+    )
+  )
+
+# Trim extreme prior tails for readability
+df <- df |>
+  group_by(name) |>
+  mutate(value = pmin(value, quantile(value[src == "prior"], 0.995))) |>
+  ungroup()
+
+param_plot<- ggplot(df, aes(x = value, fill = src, colour = src)) +
+  geom_density(alpha = 0.4, linewidth = 0.5) +
+  facet_wrap(~name, scales = "free", labeller = label_parsed) +
+  scale_fill_manual(values   = c(prior = "steelblue", posterior = "firebrick4")) +
+  scale_colour_manual(values = c(prior = "steelblue", posterior = "firebrick4")) +
+  labs(x = NULL, y = "Density", fill = NULL, colour = NULL,
+       title = "Prior vs posterior distributions") +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "bottom", panel.grid.minor = element_blank())
+param_plot
+ggsave("param_plot_lgpr_ANOVA_m_1.png", param_plot, width = 10, height = 6,dpi = 180)
+```
+## LGPR with informative priors
+```{r}
+
+# priors
+prior <- list(
+  alpha = igam(2, 1, square = TRUE),# log_normal(0, 1), 
+  ell = igam(2, 1, square = FALSE)
+)
+
+idx <- sample(data_hs$datapoint, 135, replace=FALSE)
+
+data_shorter <- data[-c(idx),] 
+
+m_2 <- lgp(
+  kid_score ~
+    gp(mom_iq) +  zs(mom_hs),
+  data = data_shorter,
+  prior = prior,
+  sample_f = TRUE
+)
+
+print(m_2)
+save(m_2, file="m_2.RData")
+#load("m_2.RData")
+```
+```{r}
+
+y_mean <- mean(data_shorter$kid_score)
+y_sd   <- sd(data_shorter$kid_score)
+
+unscale <- function(x) x  + y_mean 
+
+iq_grid <- seq(min(data_shorter$mom_iq), max(data_shorter$mom_iq), length.out = 120)
+
+x_hs <- data.frame(
+  mom_iq = iq_grid,
+  mom_hs = factor(1,    levels = levels(data_shorter$mom_hs))
+)
+x_nohs <- data.frame(
+  mom_iq = iq_grid,
+  mom_hs = factor(0, levels = levels(data_shorter$mom_hs))
+)
+x_shared <- x_hs   
+
+n_draws <- nrow(get_draws(m_2))  
+idx     <- sample(n_draws, min(200, n_draws))
+ 
+pred_hs    <- pred(m_2, x = x_hs,     draws = idx, verbose = FALSE)
+pred_nohs  <- pred(m_2, x = x_nohs,   draws = idx, verbose = FALSE)
+pred_share <- pred(m_2, x = x_shared, draws = idx, verbose = FALSE)
+
+draws_summary <- function(mat, iq_grid, group = NULL) {
+  mat <- unscale(mat)
+  df <- tibble(
+    mom_iq = iq_grid,
+    mean   = colMeans(mat),
+    lo     = apply(mat, 2, quantile, 0.025),
+    hi     = apply(mat, 2, quantile, 0.975)
+  )
+  if (!is.null(group)) df$mom_hs <- group
+  df
+}
+
+df_shared <- draws_summary(pred_share@f_comp[[1]], iq_grid)
+
+
+df_hs    <- draws_summary(pred_hs@f,   iq_grid, group = 1)
+df_nohs  <- draws_summary(pred_nohs@f, iq_grid, group = 0)
+
+df_groups <- bind_rows(df_hs, df_nohs) |>
+  mutate(mom_hs = factor(mom_hs, levels = c(0, 1)))
+
+
+p_m_2<- ggplot() +
+  # 95% CI ribbons for group curves
+  geom_ribbon(
+    data = df_groups,
+    aes(x = mom_iq, ymin = lo, ymax = hi, fill = mom_hs),
+    alpha = 0.18
+  ) +
+  # Group-specific total curves: f = gp(mom_iq) + zs(mom_hs)
+  geom_line(
+    data = df_groups,
+    aes(x = mom_iq, y = mean, colour = mom_hs, group = mom_hs),
+    linewidth = 0.85
+  ) +
+  # Shared trend: gp(mom_iq) only — dashed red
+  geom_line(
+    data      = df_shared,
+    aes(x = mom_iq, y = mean),
+    colour    = "firebrick4",
+    linewidth = 0.9,
+    linetype  = "dashed"
+  ) +
+  # Raw data
+  geom_point(
+    data  = data_shorter,
+    aes(x = mom_iq, y = kid_score, colour = mom_hs),
+    alpha = 0.4, size = 1.4
+  ) +
+ # scale_colour_manual(values = pal_groups, name = "Mother HS") +
+  #scale_fill_manual(values   = pal_groups, name = "Mother HS") +
+  labs(
+    x        = "Mother's IQ",
+    y        = "Child IQ score",
+    title    = "Functional ANOVA GP decomposition",
+    subtitle = "Dashed red = shared gp(mom_iq); lines = group totals [shared + zs offset]; ribbon = 95% CI"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "bottom")
+p_m_2
+ggsave("lgpr_ANOVA_m_2.png", p_m_2, width = 10, height = 6,dpi = 180)
+
+
+# --- Extract posterior draws ---
+post_mat <- get_draws(m_2)                         # num_draws x num_params matrix
+post     <- post_mat[, grepl("^alpha|^ell|^sigma", colnames(post_mat)), drop = FALSE]
+post     <- as.data.frame(post)
+
+n <- nrow(post)
+
+# --- Prior draws (defaults: alpha ~ half-t(20), ell ~ log-normal(0,1), sigma^2 ~ inv-gamma(2,1)) ---
+prior_df <- data.frame(
+  `alpha[1]` = abs(rt(n, df = 20)),
+  `alpha[2]` = abs(rt(n, df = 20)),
+  `ell[1]`   = rlnorm(n, 0, 1),
+  `ell[2]`   = rlnorm(n, 0, 1),
+  `sigma[1]` = sqrt(1 / rgamma(n, shape = 2, rate = 1)),
+  check.names = FALSE
+)
+
+# --- Combine and tidy ---
+post_long  <- post  |> mutate(src = "posterior") |> pivot_longer(-src)
+prior_long <- prior_df |> mutate(src = "prior")   |> pivot_longer(-src)
+
+df <- bind_rows(post_long, prior_long) |>
+  mutate(
+    src  = factor(src, levels = c("prior", "posterior")),
+    name = recode(name,
+      `alpha[1]` = "a[1]",
+      `alpha[2]` = "a[2]",
+      `ell[1]`   = "l[1]",
+      `ell[2]`   = "l[2]",
+      `sigma[1]` = "σ"
+    )
+  )
+
+# Trim extreme prior tails for readability
+df <- df |>
+  group_by(name) |>
+  mutate(value = pmin(value, quantile(value[src == "prior"], 0.995))) |>
+  ungroup()
+
+param_plot<- ggplot(df, aes(x = value, fill = src, colour = src)) +
+  geom_density(alpha = 0.4, linewidth = 0.5) +
+  facet_wrap(~name, scales = "free", labeller = label_parsed) +
+  scale_fill_manual(values   = c(prior = "steelblue", posterior = "firebrick4")) +
+  scale_colour_manual(values = c(prior = "steelblue", posterior = "firebrick4")) +
+  labs(x = NULL, y = "Density", fill = NULL, colour = NULL,
+       title = "Prior vs posterior distributions") +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "bottom", panel.grid.minor = element_blank())
+
+param_plot
+ggsave("param_plot_lgpr_ANOVA_m_2.png", param_plot, width = 10, height = 6,dpi = 180)
+```
+
+```{r}
+t <- seq(0, 1, by = 0.01)
+x_pred <- new_x(data_shorter, t, x = "mom_iq", group_by = "mom_hs")
+
+p <- pred(m_2, x_pred, reduce = mean)
+
+plot_components(m_2,
+  pred = p,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
+
+plot_components(m_2,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
+```
+
+
+## LGPR with a more complicated model
+```{r}
+set.seed(123)
+# priors
+prior <- list(
+  alpha = igam(2, 1, square = TRUE),# log_normal(0, 1), 
+  ell = igam(2, 1, square = FALSE)
+)
+
+idx <- sample(data_hs$datapoint, 135, replace=FALSE)
+
+data_shorter <- data[-c(idx),] 
+
+# Fit model
+m_3 <- lgp(
+  kid_score ~
+    gp(mom_iq) +  gp(mom_iq)*zs(mom_hs),
+  data = data_shorter,
+ # prior = prior,
+  sample_f = FALSE
+)
+
+print(m_3)
+save(m_3, file="m_3.RData")
+#load("m_3.RData")
+```
+```{r}
+
+y_mean <- mean(data_shorter$kid_score)
+y_sd   <- sd(data_shorter$kid_score)
+
+unscale <- function(x) x  + y_mean 
+
+iq_grid <- seq(min(data_shorter$mom_iq), max(data_shorter$mom_iq), length.out = 120)
+
+x_hs <- data.frame(
+  mom_iq = iq_grid,
+  mom_hs = factor(1,    levels = levels(data_shorter$mom_hs))
+)
+x_nohs <- data.frame(
+  mom_iq = iq_grid,
+  mom_hs = factor(0, levels = levels(data_shorter$mom_hs))
+)
+x_shared <- x_hs   
+
+n_draws <- nrow(get_draws(m_3))  
+idx     <- sample(n_draws, min(200, n_draws))
+ 
+pred_hs    <- pred(m_3, x = x_hs,     draws = idx, verbose = FALSE)
+pred_nohs  <- pred(m_3, x = x_nohs,   draws = idx, verbose = FALSE)
+pred_share <- pred(m_3, x = x_shared, draws = idx, verbose = FALSE)
+
+draws_summary <- function(mat, iq_grid, group = NULL) {
+#  mat <- unscale(mat)
+  df <- tibble(
+    mom_iq = iq_grid,
+    mean   = colMeans(mat),
+    lo     = apply(mat, 2, quantile, 0.025),
+    hi     = apply(mat, 2, quantile, 0.975)
+  )
+  if (!is.null(group)) df$mom_hs <- group
+  df
+}
+
+df_shared <- draws_summary(pred_share@f_comp_mean[[1]], iq_grid)
+
+
+df_hs    <- draws_summary(pred_hs@f_mean,   iq_grid, group = 1)
+df_nohs  <- draws_summary(pred_nohs@f_mean, iq_grid, group = 0)
+
+df_groups <- bind_rows(df_hs, df_nohs) |>
+  mutate(mom_hs = factor(mom_hs, levels = c(0, 1)))
+
+
+p_m_3<- ggplot() +
+  # 95% CI ribbons for group curves
+  geom_ribbon(
+    data = df_groups,
+    aes(x = mom_iq, ymin = lo, ymax = hi, fill = mom_hs),
+    alpha = 0.18
+  ) +
+  # Group-specific total curves: f = gp(mom_iq) + zs(mom_hs)
+  geom_line(
+    data = df_groups,
+    aes(x = mom_iq, y = mean, colour = mom_hs, group = mom_hs),
+    linewidth = 0.85
+  ) +
+  # Shared trend: gp(mom_iq) only — dashed red
+  geom_line(
+    data      = df_shared,
+    aes(x = mom_iq, y = mean),
+    colour    = "firebrick4",
+    linewidth = 0.9,
+    linetype  = "dashed"
+  ) +
+  # Raw data
+  geom_point(
+    data  = data_shorter,
+    aes(x = mom_iq, y = kid_score, colour = mom_hs),
+    alpha = 0.4, size = 1.4
+  ) +
+ # scale_colour_manual(values = pal_groups, name = "Mother HS") +
+  #scale_fill_manual(values   = pal_groups, name = "Mother HS") +
+  labs(
+    x        = "Mother's IQ",
+    y        = "Child IQ score",
+    title    = "Functional ANOVA GP decomposition",
+    subtitle = "Dashed red = shared gp(mom_iq); lines = group totals [shared + zs offset]; ribbon = 95% CI"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "bottom")
+p_m_3
+ggsave("lgpr_ANOVA_m_3.png", p_m_3, width = 10, height = 6,dpi = 180)
+
+
+# --- Extract posterior draws ---
+post_mat <- get_draws(m_3)                         # num_draws x num_params matrix
+post     <- post_mat[, grepl("^alpha|^ell|^sigma", colnames(post_mat)), drop = FALSE]
+post     <- as.data.frame(post)
+
+n <- nrow(post)
+
+# --- Prior draws (defaults: alpha ~ half-t(20), ell ~ log-normal(0,1), sigma^2 ~ inv-gamma(2,1)) ---
+prior_df <- data.frame(
+  `alpha[1]` = abs(rt(n, df = 20)),
+  `alpha[2]` = abs(rt(n, df = 20)),
+  `ell[1]`   = rlnorm(n, 0, 1),
+  `ell[2]`   = rlnorm(n, 0, 1),
+  `sigma[1]` = sqrt(1 / rgamma(n, shape = 2, rate = 1)),
+  check.names = FALSE
+)
+
+# --- Combine and tidy ---
+post_long  <- post  |> mutate(src = "posterior") |> pivot_longer(-src)
+prior_long <- prior_df |> mutate(src = "prior")   |> pivot_longer(-src)
+
+df <- bind_rows(post_long, prior_long) |>
+  mutate(
+    src  = factor(src, levels = c("prior", "posterior")),
+    name = recode(name,
+      `alpha[1]` = "a[1]",
+      `alpha[2]` = "a[2]",
+      `ell[1]`   = "l[1]",
+      `ell[2]`   = "l[2]",
+      `sigma[1]` = "σ"
+    )
+  )
+
+# Trim extreme prior tails for readability
+df <- df |>
+  group_by(name) |>
+  mutate(value = pmin(value, quantile(value[src == "prior"], 0.995))) |>
+  ungroup()
+
+param_plot<- ggplot(df, aes(x = value, fill = src, colour = src)) +
+  geom_density(alpha = 0.4, linewidth = 0.5) +
+  facet_wrap(~name, scales = "free", labeller = label_parsed) +
+  scale_fill_manual(values   = c(prior = "steelblue", posterior = "firebrick4")) +
+  scale_colour_manual(values = c(prior = "steelblue", posterior = "firebrick4")) +
+  labs(x = NULL, y = "Density", fill = NULL, colour = NULL,
+       title = "Prior vs posterior distributions") +
+  theme_bw(base_size = 11) +
+  theme(legend.position = "bottom", panel.grid.minor = element_blank())
+
+param_plot
+ggsave("param_plot_lgpr_ANOVA_m_3.png", param_plot, width = 10, height = 6,dpi = 180)
+```
+
+```{r}
+t <- seq(0, 1, by = 0.01)
+x_pred <- new_x(data_shorter, t, x = "mom_iq", group_by = "mom_hs")
+
+p <- pred(m_3, x_pred, reduce = mean)
+
+plot_components(m_3,
+  pred = p,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
+
+plot_components(m_3,
+  group_by = "mom_hs",
+  t_name  = "mom_iq",
+  color_by = c("mom_hs", "mom_hs", "mom_hs"),
+#  ylim = c(-0.5, 1),
+  ncol = 2
+)
+```
+
+#### LINEQGPR ANOVA + monotonicity
+
+
+```{r}
+library(lineqGPR)
+
+# ── 0. Normalise ───────────────────────────────────────────────────────────────
+iq_min <- min(c(data_no_hs$mom_iq, data_hs$mom_iq))
+iq_max <- max(c(data_no_hs$mom_iq, data_hs$mom_iq))
+#normalise <- function(x) (x - iq_min) / (iq_max - iq_min)
+
+x_no_hs <- data_no_hs$mom_iq#normalise(data_no_hs$mom_iq)
+y_no_hs  <- data_no_hs$kid_score#data_no_hs$kid_score / 100
+
+x_hs    <- data_hs$mom_iq#normalise(data_hs$mom_iq)
+y_hs    <- data_hs$kid_score #/ 100
+
+# ── 1. Settings ────────────────────────────────────────────────────────────────
+m       <- 30
+u_knots <- seq(0, 1, length.out = m)
+
+# Fixed kernel hyperparameters: sigma2 (variance), theta (lengthscale)
+kern_par <- c(sigma2 = 1, theta = 0.5)
+
+# ── 2. Basis and kernel matrices ───────────────────────────────────────────────
+Phi_no_hs_mat <- basisCompute.lineqGP(matrix(x_no_hs), matrix(u_knots))
+Phi_hs_mat    <- basisCompute.lineqGP(matrix(x_hs),    matrix(u_knots))
+
+n_no_hs <- length(x_no_hs)
+n_hs    <- length(x_hs)
+
+# Block-diagonal Phi: each group maps only to its own m coefficients
+Phi_joint <- rbind(
+  cbind(Phi_no_hs_mat,         matrix(0, n_no_hs, m)),
+  cbind(matrix(0, n_hs, m),    Phi_hs_mat)
+)
+
+Gamma_base  <- kernCompute(matrix(u_knots), matrix(u_knots),
+                           type = "matern52", par = kern_par)
+Gamma_joint <- rbind(
+  cbind(Gamma_base,            matrix(0, m, m)),
+  cbind(matrix(0, m, m),       Gamma_base)
+)
+
+# ── 3. Constraint matrices ─────────────────────────────────────────────────────
+I_m <- diag(m)
+Z_m <- matrix(0, m, m)
+
+# Monotonicity: xi[k] - xi[k-1] >= 0
+D <- matrix(0, m - 1, m)
+for (k in 2:m) { D[k-1, k-1] <- -1; D[k-1, k] <- 1 }
+
+Lambda_joint <- rbind(
+  cbind(I_m,  Z_m),          # boundedness no_hs  lower
+  cbind(I_m,  Z_m),          # boundedness no_hs  upper (negated below)
+  cbind(Z_m,  I_m),          # boundedness hs     lower
+  cbind(Z_m,  I_m),          # boundedness hs     upper (negated below)
+  cbind(D,    matrix(0, m-1, m)),   # monotonicity no_hs
+  cbind(matrix(0, m-1, m), D),      # monotonicity hs
+  cbind(-I_m, I_m)           # ordering: xi_hs >= xi_no_hs
+)
+
+lb_joint <- c(rep(0,   m),   # no_hs >= 0
+              rep(-Inf, m),  # no_hs <= 1  (via -xi >= -1)
+              rep(0,   m),   # hs >= 0
+              rep(-Inf, m),  # hs <= 1
+              rep(0, 2*(m-1)),       # monotonicity
+              rep(0, m))             # ordering
+
+ub_joint <- c(rep(Inf, m),   # no_hs >= 0  upper unbounded
+              rep(-0,  m),   # no_hs <= 1  (upper bound row: -xi >= -1 means xi <= 1)
+              rep(Inf, m),
+              rep(0,   m),   # hs <= 1
+              rep(Inf, 2*(m-1)),
+              rep(Inf, m))
+
+# Simpler: use the two-sided bounds2lineqSys directly
+# Redefine with clean one-sided form for bounds2lineqSys
+Lambda_clean <- rbind(
+  cbind(I_m,  Z_m),          # no_hs coefficients
+  cbind(Z_m,  I_m),          # hs coefficients
+  cbind(D,    matrix(0, m-1, m)),
+  cbind(matrix(0, m-1, m), D),
+  cbind(-I_m, I_m)
+)
+
+lb_clean <- c(rep(0,   m),    rep(0,   m),    # boundedness lower for both groups
+              rep(0, 2*(m-1)),                # monotonicity
+              rep(0, m))                      # ordering
+
+ub_clean <- c(rep(1,   m),    rep(1,   m),    # boundedness upper for both groups
+              rep(Inf, 2*(m-1)),
+              rep(Inf, m))
+
+lsys <- bounds2lineqSys(nrow(Lambda_clean), lb_clean, ub_clean,
+                        Lambda_clean, lineqSysType = "oneside")
+
+# ── 4. Assemble joint model ────────────────────────────────────────────────────
+joint_model <- list(
+  x          = matrix(c(x_no_hs, x_hs)),
+  y          = matrix(c(y_no_hs, y_hs)),
+  constrType = "linear",
+  d          = 1,
+  constrIdx  = 1L,
+ # varnoise   = 0,
+  varnoise = 1e-2,
+  localParam = list(
+    m              = 2 * m,
+    sampler        = "HMC",
+    samplingParams = c(thinning = 1, burn.in = 100, scale = 0.1),
+    mvec           = nrow(Lambda_clean)
+  ),
+  kernParam  = list(
+    par    = kern_par,
+    type   = "matern52",
+    nugget = 1e-7
+  ),
+  Phi        = Phi_joint,
+  Gamma      = Gamma_joint,
+  Lambda     = Lambda_clean,
+  lb         = lb_clean,
+  ub         = ub_clean,
+  lineqSys   = list(M = lsys$M, g = -matrix(lsys$g)),
+  u          = list(matrix(u_knots))
+)
+class(joint_model) <- "lineqGP"
+
+# ── 5. Prediction and simulation ───────────────────────────────────────────────
+xtest      <- seq(0, 1, length.out = 200)
+xtest_orig <- xtest * (iq_max - iq_min) + iq_min
+
+Phi_test <- basisCompute.lineqGP(matrix(xtest), matrix(u_knots))
+
+pred <- predict(joint_model, xtest = rbind(matrix(xtest), matrix(xtest)))
+
+xi_map_no_hs <- pred$xi.map[1:m]
+xi_map_hs    <- pred$xi.map[(m+1):(2*m)]
+
+yhat_no_hs_orig <- as.vector(Phi_test %*% xi_map_no_hs)# * 100
+yhat_hs_orig    <- as.vector(Phi_test %*% xi_map_hs)  #  * 100
+
+sim <- simulate(joint_model,
+                nsim  = 200,
+                seed  = 42,
+                xtest = rbind(matrix(xtest), matrix(xtest)))
+
+ysim_no_hs_orig <- (Phi_test %*% sim$xi.sim[1:m,          ]) #* 100
+ysim_hs_orig    <- (Phi_test %*% sim$xi.sim[(m+1):(2*m),  ]) #* 100
+ 
+save(Phi_test, file = "Phi_test_0.RData")
+save(pred, file = "pred_0.RData")
+save(sim, file = "sim_0.RData")
+```
+
+```{r}
+library(ggplot2)
+
+group_colours <- c("No HS" = "#c0392b", "HS" = "#2980b9")
+
+ci_no_hs <- apply(ysim_no_hs_orig, 1, quantile, probs = c(0.025, 0.975))
+ci_hs    <- apply(ysim_hs_orig,    1, quantile, probs = c(0.025, 0.975))
+
+df_ribbon <- data.frame(
+  mom_iq = rep(xtest_orig, 2),
+  ymin   = c(ci_no_hs[1, ], ci_hs[1, ]),
+  ymax   = c(ci_no_hs[2, ], ci_hs[2, ]),
+  group  = rep(c("No HS", "HS"), each = length(xtest_orig))
+)
+
+df_line <- data.frame(
+  mom_iq    = rep(xtest_orig, 2),
+  kid_score = c(yhat_no_hs_orig, yhat_hs_orig),
+  group     = rep(c("No HS", "HS"), each = length(xtest_orig))
+)
+
+df_points <- data.frame(
+  mom_iq    = c(data_no_hs$mom_iq, data_hs$mom_iq),
+  kid_score = c(data_no_hs$kid_score, data_hs$kid_score),
+  group     = rep(c("No HS", "HS"), times = c(nrow(data_no_hs), nrow(data_hs)))
+)
+
+ggplot() +
+  geom_ribbon(data = df_ribbon,
+              aes(x = mom_iq, ymin = ymin, ymax = ymax, fill = group),
+              alpha = 0.15) +
+  geom_line(data = df_line,
+            aes(x = mom_iq, y = kid_score, colour = group),
+            linewidth = 1.0) +
+  geom_point(data = df_points,
+             aes(x = mom_iq, y = kid_score, colour = group),
+             size = 1.5, alpha = 0.5, shape = 16) +
+  scale_colour_manual(values = group_colours, name = NULL) +
+  scale_fill_manual(values = group_colours, name = NULL) +
+  labs(x = "Mother's IQ", y = "Child's IQ score") +
+  theme_classic(base_size = 13) +
+  theme(legend.position = c(0.02, 0.98),
+        legend.justification = c("left", "top"))
+```
+## LESS DATA 
+
+```{r}
+set.seed(133)
+idx <- sample(unique(data_no_hs$datapoint), 45, replace=FALSE)
+
+data_no_hs_less <- data_no_hs %>%
+  filter(datapoint %in% idx) 
+nrow(data_no_hs_less)
+
+idx <- sample(unique(data_hs$datapoint), 100, replace=FALSE)
+
+data_hs_less <- data_hs %>%
+  filter(datapoint %in% idx) 
+nrow(data_hs_less)
+
+ggplot()+ geom_point(data = data_hs_less, color = "blue", aes(x = mom_iq, y = kid_score), alpha = 0.5) +geom_point(data = data_no_hs_less, color = "red", aes(x = mom_iq, y = kid_score), alpha = 0.5)  + geom_smooth(data = data_hs_less, color = "blue", aes(x = mom_iq, y = kid_score))+ geom_smooth(data = data_no_hs_less, color = "red", aes(x = mom_iq, y = kid_score))
+save(data_hs_less, file = "data_hs_less.RData")
+#load(file = "./data/data_hs_less.RData")
+#load(file = "data_no_hs_less.RData")
+```
+
+
+### NON-informative model
+```{r}
+library(lineqGPR)
+# no_hs
+model_no_hs_u <- create(
+  class      = "lineqGP",
+  x          = data_no_hs_less$mom_iq,
+  y          = data_no_hs_less$kid_score,
+  constrType = "boundedness"
+)
+model_no_hs_u$localParam$m <- 100
+model_no_hs_u$varnoise      <- 1e-2
+model_no_hs_u$bounds        <- matrix(c(-10, 10), nrow = 1)
+model_no_hs_u <- augment(model_no_hs_u)
+
+# hs
+model_hs_u <- create(
+  class      = "lineqGP",
+  x          = data_hs_less$mom_iq,
+  y          = data_hs_less$kid_score,
+  constrType = "boundedness"
+)
+model_hs_u$localParam$m <- 100
+model_hs_u$varnoise      <- 1e-2
+model_hs_u$bounds        <- matrix(c(-10, 10), nrow = 1)
+model_hs_u <- augment(model_hs_u)
+
+# predict on shared x grid
+xtest <- seq(
+  min(c(data_no_hs_less$mom_iq, data_hs_less$mom_iq)),
+  max(c(data_no_hs_less$mom_iq, data_hs_less$mom_iq)),
+  length.out = 200
+)
+
+sim_no_hs_u <- simulate(model_no_hs_u, xtest = xtest, nsim = 100, seed = 1)
+sim_hs_u    <- simulate(model_hs_u,    xtest = xtest, nsim = 100, seed = 1)
+ 
+save(sim_no_hs_u, file = "sim_no_hs_u_less_noninf.RData")
+save(sim_hs_u, file = "sim_hs_u_less_noninf.RData")
+#save(sim, file = "sim_less_noninf.RData")
+```
+
+```{r}
+library(ggplot2)
+ 
+group_colours <- c("No HS" = "#c0392b", "HS" = "#2980b9")
+ 
+ci_no_hs <- apply(sim_no_hs_u$ysim, 1, quantile, probs = c(0.025, 0.975))
+ci_hs    <- apply(sim_hs_u$ysim,    1, quantile, probs = c(0.025, 0.975))
+ 
+yhat_no_hs <- rowMeans(sim_no_hs_u$ysim)
+yhat_hs    <- rowMeans(sim_hs_u$ysim)
+ 
+df_ribbon <- data.frame(
+  mom_iq = rep(xtest, 2),
+  ymin   = c(ci_no_hs[1, ], ci_hs[1, ]),
+  ymax   = c(ci_no_hs[2, ], ci_hs[2, ]),
+  group  = rep(c("No HS", "HS"), each = length(xtest))
+)
+ 
+df_line <- data.frame(
+  mom_iq    = rep(xtest, 2),
+  kid_score = c(yhat_no_hs, yhat_hs),
+  group     = rep(c("No HS", "HS"), each = length(xtest))
+)
+ 
+df_points <- data.frame(
+  mom_iq    = c(data_no_hs_less$mom_iq, data_hs_less$mom_iq),
+  kid_score = c(data_no_hs_less$kid_score, data_hs_less$kid_score),
+  group     = rep(c("No HS", "HS"), times = c(nrow(data_no_hs_less), nrow(data_hs_less)))
+)
+ 
+p<-ggplot() +
+  geom_ribbon(data = df_ribbon,
+              aes(x = mom_iq, ymin = ymin, ymax = ymax, fill = group),
+              alpha = 0.15) +
+  geom_line(data = df_line,
+            aes(x = mom_iq, y = kid_score, colour = group),
+            linewidth = 1.0) +
+  geom_point(data = df_points,
+             aes(x = mom_iq, y = kid_score, colour = group),
+             size = 1.5, alpha = 0.5, shape = 16) +
+  scale_colour_manual(values = group_colours, name = NULL) +
+  scale_fill_manual(values = group_colours, name = NULL) +
+  labs(x = "Mother's IQ", y = "Child's IQ score") +
+  #theme_classic(base_size = 13) +
+ # theme(legend.position = c(0.02, 0.98),
+  #      legend.justification = c("left", "top"))
+    theme_bw() +
+   theme(axis.text=element_text(size=12),
+         axis.title=element_text(size=20,face="bold", color = "black"),
+     axis.line = element_line(color='black'),
+    plot.background = element_blank(),
+   panel.grid.minor = element_blank(),
+     panel.border = element_blank(),
+   legend.position = c(0.02, 0.82),
+        legend.justification = c("left", "top"))
+ggsave("gp_noninf.png", p, width = 10, height = 7,dpi = 300)
+```
+
+### informative model
+```{r}
+library(lineqGPR)
+
+# ── 0. Normalise ───────────────────────────────────────────────────────────────
+iq_min <- min(c(data_no_hs_less$mom_iq, data_hs_less$mom_iq))
+iq_max <- max(c(data_no_hs_less$mom_iq, data_hs_less$mom_iq))
+#normalise <- function(x) (x - iq_min) / (iq_max - iq_min)
+
+x_no_hs <- data_no_hs_less$mom_iq#normalise(data_no_hs_less$mom_iq)
+y_no_hs  <- data_no_hs_less$kid_score#data_no_hs_less$kid_score / 100
+
+x_hs    <- data_hs_less$mom_iq#normalise(data_hs_less$mom_iq)
+y_hs    <- data_hs_less$kid_score #/ 100
+
+# ── 1. Settings ────────────────────────────────────────────────────────────────
+m       <- 30
+u_knots <- seq(0, 1, length.out = m)
+
+# Fixed kernel hyperparameters: sigma2 (variance), theta (lengthscale)
+kern_par <- c(sigma2 = 1, theta = 0.4)
+
+# ── 2. Basis and kernel matrices ───────────────────────────────────────────────
+Phi_no_hs_mat <- basisCompute.lineqGP(matrix(x_no_hs), matrix(u_knots))
+Phi_hs_mat    <- basisCompute.lineqGP(matrix(x_hs),    matrix(u_knots))
+
+n_no_hs <- length(x_no_hs)
+n_hs    <- length(x_hs)
+
+# Block-diagonal Phi: each group maps only to its own m coefficients
+Phi_joint <- rbind(
+  cbind(Phi_no_hs_mat,         matrix(0, n_no_hs, m)),
+  cbind(matrix(0, n_hs, m),    Phi_hs_mat)
+)
+
+Gamma_base  <- kernCompute(matrix(u_knots), matrix(u_knots),
+                           type = "matern52", par = kern_par)
+Gamma_joint <- rbind(
+  cbind(Gamma_base,            matrix(0, m, m)),
+  cbind(matrix(0, m, m),       Gamma_base)
+)
+
+# ── 3. Constraint matrices ─────────────────────────────────────────────────────
+I_m <- diag(m)
+Z_m <- matrix(0, m, m)
+
+# Monotonicity: xi[k] - xi[k-1] >= 0
+D <- matrix(0, m - 1, m)
+for (k in 2:m) { D[k-1, k-1] <- -1; D[k-1, k] <- 1 }
+
+Lambda_joint <- rbind(
+  cbind(I_m,  Z_m),          # boundedness no_hs  lower
+  cbind(I_m,  Z_m),          # boundedness no_hs  upper (negated below)
+  cbind(Z_m,  I_m),          # boundedness hs     lower
+  cbind(Z_m,  I_m),          # boundedness hs     upper (negated below)
+  cbind(D,    matrix(0, m-1, m)),   # monotonicity no_hs
+  cbind(matrix(0, m-1, m), D),      # monotonicity hs
+  cbind(-I_m, I_m)           # ordering: xi_hs >= xi_no_hs
+)
+
+lb_joint <- c(rep(0,   m),   # no_hs >= 0
+              rep(-Inf, m),  # no_hs <= 1  (via -xi >= -1)
+              rep(0,   m),   # hs >= 0
+              rep(-Inf, m),  # hs <= 1
+              rep(0, 2*(m-1)),       # monotonicity
+              rep(0, m))             # ordering
+
+ub_joint <- c(rep(Inf, m),   # no_hs >= 0  upper unbounded
+              rep(-0,  m),   # no_hs <= 1  (upper bound row: -xi >= -1 means xi <= 1)
+              rep(Inf, m),
+              rep(0,   m),   # hs <= 1
+              rep(Inf, 2*(m-1)),
+              rep(Inf, m))
+
+# Simpler: use the two-sided bounds2lineqSys directly
+# Redefine with clean one-sided form for bounds2lineqSys
+Lambda_clean <- rbind(
+  cbind(I_m,  Z_m),          # no_hs coefficients
+  cbind(Z_m,  I_m),          # hs coefficients
+  cbind(D,    matrix(0, m-1, m)),
+  cbind(matrix(0, m-1, m), D),
+  cbind(-I_m, I_m)
+)
+
+lb_clean <- c(rep(0,   m),    rep(0,   m),    # boundedness lower for both groups
+              rep(0, 2*(m-1)),                # monotonicity
+              rep(0, m))                      # ordering
+
+ub_clean <- c(rep(1,   m),    rep(1,   m),    # boundedness upper for both groups
+              rep(Inf, 2*(m-1)),
+              rep(Inf, m))
+
+lsys <- bounds2lineqSys(nrow(Lambda_clean), lb_clean, ub_clean,
+                        Lambda_clean, lineqSysType = "oneside")
+
+# ── 4. Assemble joint model ────────────────────────────────────────────────────
+joint_model <- list(
+  x          = matrix(c(x_no_hs, x_hs)),
+  y          = matrix(c(y_no_hs, y_hs)),
+  constrType = "linear",
+  d          = 1,
+  constrIdx  = 1L,
+ # varnoise   = 0,
+  varnoise = 1e-2,
+  localParam = list(
+    m              = 2 * m,
+    sampler        = "HMC",
+    samplingParams = c(thinning = 1, burn.in = 100, scale = 0.1),
+    mvec           = nrow(Lambda_clean)
+  ),
+  kernParam  = list(
+    par    = kern_par,
+    type   = "matern52",
+    nugget = 1e-7
+  ),
+  Phi        = Phi_joint,
+  Gamma      = Gamma_joint,
+  Lambda     = Lambda_clean,
+  lb         = lb_clean,
+  ub         = ub_clean,
+  lineqSys   = list(M = lsys$M, g = -matrix(lsys$g)),
+  u          = list(matrix(u_knots))
+)
+class(joint_model) <- "lineqGP"
+
+# ── 5. Prediction and simulation ───────────────────────────────────────────────
+xtest      <- seq(0, 1, length.out = 200)
+xtest_orig <- xtest * (iq_max - iq_min) + iq_min
+
+Phi_test <- basisCompute.lineqGP(matrix(xtest), matrix(u_knots))
+
+pred <- predict(joint_model, xtest = rbind(matrix(xtest), matrix(xtest)))
+
+xi_map_no_hs <- pred$xi.map[1:m]
+xi_map_hs    <- pred$xi.map[(m+1):(2*m)]
+
+yhat_no_hs_orig <- as.vector(Phi_test %*% xi_map_no_hs)# * 100
+yhat_hs_orig    <- as.vector(Phi_test %*% xi_map_hs)  #  * 100
+
+sim <- simulate(joint_model,
+                nsim  = 200,
+                seed  = 42,
+                xtest = rbind(matrix(xtest), matrix(xtest)))
+
+ysim_no_hs_orig <- (Phi_test %*% sim$xi.sim[1:m,          ]) #* 100
+ysim_hs_orig    <- (Phi_test %*% sim$xi.sim[(m+1):(2*m),  ]) #* 100
+ 
+# save(Phi_test, file = "Phi_test_less_inf.RData")
+# save(pred, file = "pred_less_inf.RData")
+# save(sim, file = "sim_less_inf.RData")
+```
+
+```{r}
+library(ggplot2)
+
+group_colours <- c("No HS" = "#c0392b", "HS" = "#2980b9")
+
+ci_no_hs <- apply(ysim_no_hs_orig, 1, quantile, probs = c(0.025, 0.975))
+ci_hs    <- apply(ysim_hs_orig,    1, quantile, probs = c(0.025, 0.975))
+
+yhat_no_hs_orig <- rowMeans(ysim_no_hs_orig)
+yhat_hs_orig    <- rowMeans(ysim_hs_orig)
+
+df_ribbon <- data.frame(
+  mom_iq = rep(xtest_orig, 2),
+  ymin   = c(ci_no_hs[1, ], ci_hs[1, ]),
+  ymax   = c(ci_no_hs[2, ], ci_hs[2, ]),
+  group  = rep(c("No HS", "HS"), each = length(xtest_orig))
+)
+
+df_line <- data.frame(
+  mom_iq    = rep(xtest_orig, 2),
+  kid_score = c(yhat_no_hs_orig, yhat_hs_orig),
+  group     = rep(c("No HS", "HS"), each = length(xtest_orig))
+)
+
+df_points <- data.frame(
+  mom_iq    = c(data_no_hs_less$mom_iq, data_hs_less$mom_iq),
+  kid_score = c(data_no_hs_less$kid_score, data_hs_less$kid_score),
+  group     = rep(c("No HS", "HS"), times = c(nrow(data_no_hs_less), nrow(data_hs_less)))
+)
+
+ggplot() +
+  geom_ribbon(data = df_ribbon,
+              aes(x = mom_iq, ymin = ymin, ymax = ymax, fill = group),
+              alpha = 0.15) +
+  geom_line(data = df_line,
+            aes(x = mom_iq, y = kid_score, colour = group),
+            linewidth = 1.0) +
+  geom_point(data = df_points,
+             aes(x = mom_iq, y = kid_score, colour = group),
+             size = 1.5, alpha = 0.5, shape = 16) +
+  scale_colour_manual(values = group_colours, name = NULL) +
+  scale_fill_manual(values = group_colours, name = NULL) +
+  labs(x = "Mother's IQ", y = "Child's IQ score") +
+  theme_classic(base_size = 13) +
+  theme(legend.position = c(0.02, 0.98),
+        legend.justification = c("left", "top"))
+```
+```{r}
+rowMeans(sim$xi.sim[1:m, ])
+```
+# less rigid bound
+```{r}
+library(lineqGPR)
+
+# ── 0. Normalise ───────────────────────────────────────────────────────────────
+iq_min <- min(c(data_no_hs_less$mom_iq, data_hs_less$mom_iq))
+iq_max <- max(c(data_no_hs_less$mom_iq, data_hs_less$mom_iq))
+normalise <- function(x) (x - iq_min) / (iq_max - iq_min)
+
+x_no_hs <- normalise(data_no_hs_less$mom_iq)
+y_no_hs  <- data_no_hs_less$kid_score
+
+x_hs    <- normalise(data_hs_less$mom_iq)
+y_hs    <- data_hs_less$kid_score
+
+# ── 1. Settings ────────────────────────────────────────────────────────────────
+m       <- 30
+u_knots <- seq(0, 1, length.out = m)
+
+kern_par <- c(sigma2 = 1, theta = 0.5)
+
+# ── 2. Basis and kernel matrices ───────────────────────────────────────────────
+Phi_no_hs_mat <- basisCompute.lineqGP(matrix(x_no_hs), matrix(u_knots))
+Phi_hs_mat    <- basisCompute.lineqGP(matrix(x_hs),    matrix(u_knots))
+
+n_no_hs <- length(x_no_hs)
+n_hs    <- length(x_hs)
+
+Phi_joint <- rbind(
+  cbind(Phi_no_hs_mat,        matrix(0, n_no_hs, m)),
+  cbind(matrix(0, n_hs, m),   Phi_hs_mat)
+)
+
+Gamma_base  <- kernCompute(matrix(u_knots), matrix(u_knots),
+                           type = "matern52", par = kern_par)
+Gamma_joint <- rbind(
+  cbind(Gamma_base,           matrix(0, m, m)),
+  cbind(matrix(0, m, m),      Gamma_base)
+)
+
+# ── 3. Constraint matrices ─────────────────────────────────────────────────────
+I_m <- diag(m)
+Z_m <- matrix(0, m, m)
+
+# Monotonicity difference matrix
+D <- matrix(0, m - 1, m)
+for (k in 2:m) { D[k-1, k-1] <- -1; D[k-1, k] <- 1 }
+
+# Ordering at 6 anchor knots within the observed data range only
+x_range     <- range(c(x_no_hs, x_hs))
+anchor_idx  <- which(u_knots >= x_range[1] & u_knots <= x_range[2])
+anchor_idx  <- anchor_idx[round(seq(1, length(anchor_idx), length.out = 6))]
+
+Lambda_order <- cbind(-I_m[anchor_idx, ], I_m[anchor_idx, ])
+
+Lambda_clean <- rbind(
+  cbind(I_m, Z_m),                          # boundedness no_hs
+  cbind(Z_m, I_m),                          # boundedness hs
+  cbind(D,   matrix(0, m-1, m)),            # monotonicity no_hs
+  cbind(matrix(0, m-1, m), D),              # monotonicity hs
+  Lambda_order                               # ordering at 6 anchor knots
+)
+
+lb_clean <- c(rep(0,   m),  rep(0,   m),    # boundedness lower
+              rep(0, 2*(m-1)),              # monotonicity lower
+              rep(0, length(anchor_idx)))   # ordering lower
+
+ub_clean <- c(rep(1,   m),  rep(1,   m),    # boundedness upper
+              rep(Inf, 2*(m-1)),            # monotonicity upper
+              rep(Inf, length(anchor_idx))) # ordering upper
+
+lsys <- bounds2lineqSys(nrow(Lambda_clean), lb_clean, ub_clean,
+                        Lambda_clean, lineqSysType = "oneside")
+
+# ── 4. Assemble joint model ────────────────────────────────────────────────────
+joint_model <- list(
+  x          = matrix(c(x_no_hs, x_hs)),
+  y          = matrix(c(y_no_hs, y_hs)),
+  constrType = "linear",
+  d          = 1,
+  constrIdx  = 1L,
+  varnoise   = 1e-2,
+  localParam = list(
+    m              = 2 * m,
+    sampler        = "HMC",
+    samplingParams = c(thinning = 1, burn.in = 100, scale = 0.1),
+    mvec           = nrow(Lambda_clean)
+  ),
+  kernParam  = list(
+    par    = kern_par,
+    type   = "matern52",
+    nugget = 1e-7
+  ),
+  Phi        = Phi_joint,
+  Gamma      = Gamma_joint,
+  Lambda     = Lambda_clean,
+  lb         = lb_clean,
+  ub         = ub_clean,
+  lineqSys   = list(M = lsys$M, g = -matrix(lsys$g)),
+  u          = list(matrix(u_knots))
+)
+class(joint_model) <- "lineqGP"
+
+# ── 5. Prediction and simulation ───────────────────────────────────────────────
+xtest      <- seq(0, 1, length.out = 200)
+xtest_orig <- xtest * (iq_max - iq_min) + iq_min
+
+Phi_test <- basisCompute.lineqGP(matrix(xtest), matrix(u_knots))
+
+sim <- simulate(joint_model,
+                nsim  = 200,
+                seed  = 42,
+                xtest = rbind(matrix(xtest), matrix(xtest)))
+
+ysim_no_hs <- Phi_test %*% sim$xi.sim[1:m,           ]
+ysim_hs    <- Phi_test %*% sim$xi.sim[(m+1):(2*m),   ]
+
+# Diagnostic: proportion of samples where hs >= no_hs at all xtest points
+cat("Proportion of samples with hs >= no_hs everywhere:",
+    mean(apply(ysim_hs >= ysim_no_hs, 2, all)), "\n")
+
+# save(Phi_test, file = "Phi_test_less_inf.RData")
+load(file = "./fits/Phi_test_less_inf.RData")
+load(file = "./fits/sim_less_inf.RData")
+load(file = "./fits/pred_less_inf.RData")
+# save(pred, file = "pred_less_inf.RData")
+
+# save(sim, file = "sim_less_inf.RData")
+```
+
+```{r}
+library(ggplot2)
+
+group_colours <- c("No HS" = "#c0392b", "HS" = "#2980b9")
+
+ci_no_hs <- apply(ysim_no_hs, 1, quantile, probs = c(0.025, 0.975))
+ci_hs    <- apply(ysim_hs,    1, quantile, probs = c(0.025, 0.975))
+
+yhat_no_hs_orig <- rowMeans(ysim_no_hs)
+yhat_hs_orig    <- rowMeans(ysim_hs)
+
+df_ribbon <- data.frame(
+  mom_iq = rep(xtest_orig, 2),
+  ymin   = c(ci_no_hs[1, ], ci_hs[1, ]),
+  ymax   = c(ci_no_hs[2, ], ci_hs[2, ]),
+  group  = rep(c("No HS", "HS"), each = length(xtest_orig))
+)
+
+df_line <- data.frame(
+  mom_iq    = rep(xtest_orig, 2),
+  kid_score = c(yhat_no_hs_orig, yhat_hs_orig),
+  group     = rep(c("No HS", "HS"), each = length(xtest_orig))
+)
+
+df_points <- data.frame(
+  mom_iq    = c(data_no_hs_less$mom_iq, data_hs_less$mom_iq),
+  kid_score = c(data_no_hs_less$kid_score, data_hs_less$kid_score),
+  group     = rep(c("No HS", "HS"), times = c(nrow(data_no_hs_less), nrow(data_hs_less)))
+)
+
+ggplot() +
+  geom_ribbon(data = df_ribbon,
+              aes(x = mom_iq, ymin = ymin, ymax = ymax, fill = group),
+              alpha = 0.15) +
+  geom_line(data = df_line,
+            aes(x = mom_iq, y = kid_score, colour = group),
+            linewidth = 1.0) +
+  geom_point(data = df_points,
+             aes(x = mom_iq, y = kid_score, colour = group),
+             size = 1.5, alpha = 0.5, shape = 16) +
+  scale_colour_manual(values = group_colours, name = NULL) +
+  scale_fill_manual(values = group_colours, name = NULL) +
+  labs(x = "Mother's IQ", y = "Child's IQ score") +
+  theme_classic(base_size = 13) +
+  theme(legend.position = c(0.02, 0.98),
+        legend.justification = c("left", "top"))
+```
+
+# without monotonicity
+```{r}
+library(lineqGPR)
+
+# ── 0. Normalise ───────────────────────────────────────────────────────────────
+iq_min <- min(c(data_no_hs_less$mom_iq, data_hs_less$mom_iq))
+iq_max <- max(c(data_no_hs_less$mom_iq, data_hs_less$mom_iq))
+normalise <- function(x) (x - iq_min) / (iq_max - iq_min)
+
+x_no_hs <- normalise(data_no_hs_less$mom_iq)
+y_no_hs  <- data_no_hs_less$kid_score
+
+x_hs    <- normalise(data_hs_less$mom_iq)
+y_hs    <- data_hs_less$kid_score
+
+# ── 1. Settings ────────────────────────────────────────────────────────────────
+m       <- 30
+u_knots <- seq(0, 1, length.out = m)
+
+kern_par <- c(sigma2 = 1, theta = 0.5)
+
+# ── 2. Basis and kernel matrices ───────────────────────────────────────────────
+Phi_no_hs_mat <- basisCompute.lineqGP(matrix(x_no_hs), matrix(u_knots))
+Phi_hs_mat    <- basisCompute.lineqGP(matrix(x_hs),    matrix(u_knots))
+
+n_no_hs <- length(x_no_hs)
+n_hs    <- length(x_hs)
+
+Phi_joint <- rbind(
+  cbind(Phi_no_hs_mat,        matrix(0, n_no_hs, m)),
+  cbind(matrix(0, n_hs, m),   Phi_hs_mat)
+)
+
+Gamma_base  <- kernCompute(matrix(u_knots), matrix(u_knots),
+                           type = "matern52", par = kern_par)
+Gamma_joint <- rbind(
+  cbind(Gamma_base,           matrix(0, m, m)),
+  cbind(matrix(0, m, m),      Gamma_base)
+)
+
+# ── 3. Constraint matrices ─────────────────────────────────────────────────────
+I_m <- diag(m)
+Z_m <- matrix(0, m, m)
+
+# Monotonicity difference matrix
+#D <- matrix(0, m - 1, m)
+#for (k in 2:m) { D[k-1, k-1] <- -1; D[k-1, k] <- 1 }
+
+# Ordering at 6 anchor knots within the observed data range only
+x_range     <- range(c(x_no_hs, x_hs))
+anchor_idx  <- which(u_knots >= x_range[1] & u_knots <= x_range[2])
+anchor_idx  <- anchor_idx[round(seq(1, length(anchor_idx), length.out = 2))]
+
+Lambda_order <- cbind(-I_m[anchor_idx, ], I_m[anchor_idx, ])
+
+Lambda_clean <- rbind(
+  cbind(I_m, Z_m),                          # boundedness no_hs
+  cbind(Z_m, I_m),                          # boundedness hs
+ # cbind(D,   matrix(0, m-1, m)),            # monotonicity no_hs
+#  cbind(matrix(0, m-1, m), D),              # monotonicity hs
+  Lambda_order                               # ordering at 6 anchor knots
+)
+
+lb_clean <- c(rep(0,   m),  rep(0,   m),    # boundedness lower
+            #  rep(0, 2*(m-1)),              # monotonicity lower
+              rep(0, length(anchor_idx)))   # ordering lower
+
+ub_clean <- c(rep(1,   m),  rep(1,   m),    # boundedness upper
+           #   rep(Inf, 2*(m-1)),            # monotonicity upper
+              rep(Inf, length(anchor_idx))) # ordering upper
+
+lsys <- bounds2lineqSys(nrow(Lambda_clean), lb_clean, ub_clean,
+                        Lambda_clean, lineqSysType = "oneside")
+
+# ── 4. Assemble joint model ────────────────────────────────────────────────────
+joint_model <- list(
+  x          = matrix(c(x_no_hs, x_hs)),
+  y          = matrix(c(y_no_hs, y_hs)),
+  constrType = "linear",
+  d          = 1,
+  constrIdx  = 1L,
+  varnoise   = 1e-2,
+  localParam = list(
+    m              = 2 * m,
+    sampler        = "HMC",
+    samplingParams = c(thinning = 1, burn.in = 100, scale = 0.1),
+    mvec           = nrow(Lambda_clean)
+  ),
+  kernParam  = list(
+    par    = kern_par,
+    type   = "matern52",
+    nugget = 1e-7
+  ),
+  Phi        = Phi_joint,
+  Gamma      = Gamma_joint,
+  Lambda     = Lambda_clean,
+  lb         = lb_clean,
+  ub         = ub_clean,
+  lineqSys   = list(M = lsys$M, g = -matrix(lsys$g)),
+  u          = list(matrix(u_knots))
+)
+class(joint_model) <- "lineqGP"
+
+# ── 5. Prediction and simulation ───────────────────────────────────────────────
+xtest      <- seq(0, 1, length.out = 200)
+xtest_orig <- xtest * (iq_max - iq_min) + iq_min
+
+Phi_test <- basisCompute.lineqGP(matrix(xtest), matrix(u_knots))
+
+sim <- simulate(joint_model,
+                nsim  = 200,
+                seed  = 42,
+                xtest = rbind(matrix(xtest), matrix(xtest)))
+
+ysim_no_hs <- Phi_test %*% sim$xi.sim[1:m,           ]
+ysim_hs    <- Phi_test %*% sim$xi.sim[(m+1):(2*m),   ]
+
+# Diagnostic: proportion of samples where hs >= no_hs at all xtest points
+cat("Proportion of samples with hs >= no_hs everywhere:",
+    mean(apply(ysim_hs >= ysim_no_hs, 2, all)), "\n")
+
+# save(Phi_test, file = "Phi_test_less_inf.RData")
+# save(pred, file = "pred_less_inf.RData")
+# save(sim, file = "sim_less_inf.RData")
+```
+
+```{r}
+library(ggplot2)
+
+group_colours <- c("No HS" = "#c0392b", "HS" = "#2980b9")
+
+ci_no_hs <- apply(ysim_no_hs, 1, quantile, probs = c(0.025, 0.975))
+ci_hs    <- apply(ysim_hs,    1, quantile, probs = c(0.025, 0.975))
+
+yhat_no_hs_orig <- rowMeans(ysim_no_hs)
+yhat_hs_orig    <- rowMeans(ysim_hs)
+
+df_ribbon <- data.frame(
+  mom_iq = rep(xtest_orig, 2),
+  ymin   = c(ci_no_hs[1, ], ci_hs[1, ]),
+  ymax   = c(ci_no_hs[2, ], ci_hs[2, ]),
+  group  = rep(c("No HS", "HS"), each = length(xtest_orig))
+)
+
+df_line <- data.frame(
+  mom_iq    = rep(xtest_orig, 2),
+  kid_score = c(yhat_no_hs_orig, yhat_hs_orig),
+  group     = rep(c("No HS", "HS"), each = length(xtest_orig))
+)
+
+df_points <- data.frame(
+  mom_iq    = c(data_no_hs_less$mom_iq, data_hs_less$mom_iq),
+  kid_score = c(data_no_hs_less$kid_score, data_hs_less$kid_score),
+  group     = rep(c("No HS", "HS"), times = c(nrow(data_no_hs_less), nrow(data_hs_less)))
+)
+
+p<-ggplot() +
+  geom_ribbon(data = df_ribbon,
+              aes(x = mom_iq, ymin = ymin, ymax = ymax, fill = group),
+              alpha = 0.15) +
+  geom_line(data = df_line,
+            aes(x = mom_iq, y = kid_score, colour = group),
+            linewidth = 1.0) +
+  geom_point(data = df_points,
+             aes(x = mom_iq, y = kid_score, colour = group),
+             size = 1.5, alpha = 0.5, shape = 16) +
+  scale_colour_manual(values = group_colours, name = NULL) +
+  scale_fill_manual(values = group_colours, name = NULL) +
+  labs(x = "Mother's IQ", y = "Child's IQ score") +
+ # theme_classic(base_size = 13) +
+    theme_bw() +
+   theme(axis.text=element_text(size=12),
+         axis.title=element_text(size=20,face="bold", color = "black"),
+     axis.line = element_line(color='black'),
+    plot.background = element_blank(),
+   panel.grid.minor = element_blank(),
+     panel.border = element_blank(),
+   legend.position = c(0.02, 0.82),
+        legend.justification = c("left", "top"))
+ 
+ggsave("gp_inf.png", p, width = 10, height = 7,dpi = 300)
+```

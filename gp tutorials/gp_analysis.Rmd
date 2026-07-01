@@ -388,8 +388,7 @@ process_predictions <- function(predicted) {
   x <- as.data.frame(predicted@x)
   y <- as.data.frame(predicted@h) %>%
     pivot_longer(cols = everything()) %>%
-    dplyr::select(-name) %>%
-    rename(y = value)
+    dplyr::select(-name) #%>%   rename(y = value)
 
   # Combine 
   data <- cbind(x, y)
@@ -406,9 +405,9 @@ gp_pred_r <- process_predictions(pred2)
 ```
 #### Sort of works
 ```{r}
-ggplot(gp_pred_f, aes(x = wave_s, y = y )) + 
+ggplot(gp_pred_f, aes(x = wave_s, y = value )) + 
   geom_smooth(color = project_colors[2], size = 1) +  
-  geom_point(aes(y = y), color = project_colors[3], alpha = 0.7, size = 1.2)
+  geom_point(aes(y = value), color = project_colors[3], alpha = 0.7, size = 1.2)
 ```
 
 
