@@ -81,7 +81,7 @@ ui <- page_fillable(
               width = 10,
           checkboxInput("is_formula", "Display hints and kernel formula?", value = FALSE),
           sliderInput("n_to_draw", "Number of parameter sets to draw:", 1, n_draws, 1),
-          numberInput("seed_value", "Choose seed value:", width = 120), 
+          numberInput("seed_value", "Choose the random seed value to get reproducible draws:", width = 120), 
           actionButton("set_seed", "Set seed")),
           column(width = 10,
                  div(
@@ -363,7 +363,7 @@ server <- function(input, output) {
   
   output$hint_general <- renderUI({
     if (input$is_formula) {
-      general <- "This app helps you explore the prior distribution formulation for Gaussian processes. Follow these steps:"
+      general <- "This app helps you explore the prior distribution formulation for Gaussian processes. The main mode allows to select the kernel structure, make several sets of random parameter draws, and get one GP draw per parameter set. A hidden additional mode also allows to see the variability of GP draws within one parameter set; to explore it, indicate several draws and then fix all parameters at desired values. In general, follow these steps:"
       step_1<-"1. Set the general parameters in this block"
       step_2<-"2. Choose the kernel structure in the \"Kernel\" block"
       step_3<-"3. In the \"Kernel parameters\" block, fill in the parameters for the chosen kernel, selecting prior hyperparameters and pressing the \"Draw parameter\" buttons or setting them as fixed values via checking the corresponding check boxes"
