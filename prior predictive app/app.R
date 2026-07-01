@@ -79,10 +79,9 @@ ui <- page_fillable(
   useShinyjs(),
   navset_tab(
     nav_panel(
-      "Kernel",
-      card(
-        "General",
-        card(
+      "0. Priors",
+   #   card(
+        card(card_header("1. General"),
           layout_columns(
             col_widths = c(6, 6),
             gap = "0.1rem",
@@ -93,17 +92,14 @@ ui <- page_fillable(
           numberInput("seed_value", "Choose seed value:", width = 120), 
           actionButton("set_seed", "Set seed")),
           column(width = 10,
-          #       div(
-           #        style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
-               #    uiOutput("hint_general")
- #                  tags$pre("A:
-#1.
-#2.")
-            #     ) 
+                 div(
+                  style = "font-size: 70%; overflow: hidden; overflow-x: auto; word-break: break-word; max-width: 100%;",
+                   uiOutput("hint_general")
+                 ) 
 )
         )),
        card(
-         card_header("Kernel", style = 'padding:4px; font-size:80%'),
+         card_header("2. Kernel"),
          layout_columns(
            col_widths = c(3, 3, 6),
            gap = "0.1rem",
@@ -111,7 +107,7 @@ ui <- page_fillable(
              width = 10,
              checkboxInput("is_combination", "Use kernel combination?", value = FALSE),
              uiOutput("kernel_label_block"),
-             actionButton("draw_kernel", "Draw kernel")
+             actionButton("draw_kernel", "4. Draw kernel")
            ),
            column(
              width = 10,
@@ -123,8 +119,9 @@ ui <- page_fillable(
            plotOutput("plot_kernel", height = "250px")
          )
        ),
+card(card_header("3. Kernel parameters",
         card(
-          card_header("Hyperparameters for magnitude (σ)"),
+          card_header("Magnitude (σ)", style = 'padding:4px; font-size:90%'),
           layout_columns(
             col_widths = c(3, 3, 6),
             gap = "0.1rem",
@@ -153,9 +150,9 @@ ui <- page_fillable(
         uiOutput("dynamic_period_2_choice"),
         uiOutput("dynamic_changepoint_choice"),
       )
-    ),
+    )),
     nav_panel(
-      "Constraints",
+      "5. Constraints",
       card(
         card_header("Function characteristics"),
         div(
@@ -233,7 +230,7 @@ ui <- page_fillable(
       )
     ),
     
-    nav_panel("GP", card(
+    nav_panel("6. GP", card(
       card(
         card_header("Other parameters"),
         #sliderInput("sigma_n", "Noise amplitude:", 0, 15, 1),
@@ -371,27 +368,22 @@ server <- function(input, output) {
   
   output$hint_general <- renderUI({
     if (input$is_formula) {
-      general <- "This app helps you explore the prior distribution formulation for Gaussian processes. Follow these steps:
-      1. Set the general parameters in this block
-      2. Choose the kernel structure" 
-      step_1<-""
-      step_2<-""
-      step_3<-"3. Fill in the hyperparameters for the chosen kernel"
-      step_4<-"4. Examine the kernel by pressing the \"draw kernel\" button"
+      general <- "This app helps you explore the prior distribution formulation for Gaussian processes. Follow these steps:"
+      step_1<-"1. Set the general parameters in this block"
+      step_2<-"2. Choose the kernel structure in the \"Kernel\" block"
+      step_3<-"3. In the \"Kernel parameters\" block, fill in the parameters for the chosen kernel, selecting prior hyperparameters and pressing the \"Draw parameter\" buttons or setting them as fixed values via checking the corresponding check boxes"
+      step_4<-"4. Examine the kernel by pressing the \"Draw kernel\" button"
       step_5<-"5. Navigate to the \"Constraints\" page and set constraints (optional)"
-      step_6<-"6. Navigate to the \"GP\" page, adjust GP drawing settings and draw GPs by pressing the \"draw GP\" button"
+      step_6<-"6. Navigate to the \"GP\" page, adjust GP drawing settings and draw GPs by pressing the \"Draw GP\" button"
       
-     # div(
-     #   HTML(paste("A:", "1.", "2.", sep = "<br/>"))
-     # )
       withMathJax(
-        p(general)#,
-   #     p(step_1),
-    #    p(step_2),
-     #   p(step_3),
-      #  p(step_4),
-       # p(step_5),
-        #p(step_6)
+        p(general),
+        p(step_1),
+        p(step_2),
+        p(step_3),
+        p(step_4),
+        p(step_5),
+        p(step_6)
       )
       }
   })
@@ -684,7 +676,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label) &&
         (input$kernel_label != "Linear")) {
       card(
-        card_header("Hyperparameters for length scale (λ)"),
+        card_header("Length scale (λ)", style = 'padding:4px; font-size:90%'),
         layout_columns(
           col_widths = c(3, 3, 6),
           gap = "0.1rem",
@@ -710,7 +702,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label) &&
         (input$kernel_label == "Periodic")) {
       card(
-        card_header("Hyperparameters for period (p)"),
+        card_header("Period (p)", style = 'padding:4px; font-size:90%'),
         layout_columns(
           col_widths = c(3, 3, 6),
           gap = "0.1rem",
@@ -736,7 +728,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label) &&
         (input$kernel_label == "Matérn")) {
       card(
-        card_header("Hyperparameters for roughness (ν)"),
+        card_header("Roughness (ν)", style = 'padding:4px; font-size:90%'),
         layout_columns(
           col_widths = c(3, 3),
           gap = "0.1rem",
@@ -765,7 +757,7 @@ server <- function(input, output) {
   output$dynamic_magnitude_2_choice <- renderUI({
     if (input$is_combination && !invalid(input$kernel_label_2)) {
       card(
-        card_header("Hyperparameters for magnitude (σ) of the second kernel"),
+        card_header("Magnitude (σ) of the second kernel", style = 'padding:4px; font-size:90%'),
         layout_columns(
           col_widths = c(3, 3, 6),
           gap = "0.1rem",
@@ -792,7 +784,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label_2) &&
         (input$kernel_label_2 != "Linear")) {
       card(
-        card_header("Hyperparameters for length scale (λ) of the second kernel"),
+        card_header("Length scale (λ) of the second kernel", style = 'padding:4px; font-size:90%'),
         layout_columns(
           col_widths = c(3, 3, 6),
           gap = "0.1rem",
@@ -818,7 +810,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label_2) &&
         (input$kernel_label_2 == "Periodic")) {
       card(
-        card_header("Hyperparameters for period (p) of the second kernel"),
+        card_header("Period (p) of the second kernel", style = 'padding:4px; font-size:90%'),
         layout_columns(
           col_widths = c(3, 3, 6),
           gap = "0.1rem",
@@ -844,7 +836,7 @@ server <- function(input, output) {
     if (!invalid(input$kernel_label_2) &&
         (input$kernel_label_2 == "Matérn")) {
       card(
-        card_header("Hyperparameters for roughness (ν) of the second kernel"),
+        card_header("Roughness (ν) of the second kernel", style = 'padding:4px; font-size:90%'),
         layout_columns(
           col_widths = c(3, 3),
           gap = "0.1rem",
@@ -872,7 +864,7 @@ server <- function(input, output) {
         !invalid(input$operation) &&
         input$operation == "changepoint") {
       card(
-        card_header("Changepoint kernel parameters"),
+        card_header("Changepoint parameters"),
         layout_columns(
           col_widths = c(3, 3),
           gap = "0.1rem",
